@@ -201,11 +201,12 @@ def pytest_sessionfinish(session, exitstatus):
 
         for r in _results_accumulator:
             outcome_str = "[bold green]PASS[/bold green]" if r["passed"] else "[bold red]FAIL[/bold red]"
+            latency_str = "<0.1" if r["latency_ms"] < 0.1 else f"{r['latency_ms']:.1f}"
             table.add_row(
                 r["case_id"],
                 r["cluster"],
                 outcome_str,
-                f"{r['latency_ms']:.1f}"
+                latency_str
             )
 
         console.print(table)
