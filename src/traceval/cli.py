@@ -11,7 +11,13 @@ from traceval.console import console, err_console
 from traceval.ingest import ingest_file
 from traceval.store import TraceStore
 
-app = typer.Typer(name="traceval", help="Trace-to-Eval Compiler")
+app = typer.Typer(
+    name="traceval",
+    help=(
+        "Turn your Langfuse, LangSmith, or OTel trace exports into a pytest "
+        "eval suite you own: one CLI, no platform, works offline."
+    ),
+)
 
 
 @app.command()

@@ -5,7 +5,7 @@
   <img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License" />
 </p>
 
-***"Your traces already know how your agent fails. traceval turns them into the test suite you never wrote."***
+***Turn your Langfuse, LangSmith, or OTel trace exports into a pytest eval suite you own: one CLI, no platform, works offline.***
 
 Teams running LLM agents in production have observability traces, but only a fraction maintain evals. The raw material for good tests, thousands of real traces full of edge cases and errors, sits unused because turning it into a regression suite is manual and tedious.
 
@@ -60,6 +60,21 @@ graph LR
 * Redacts emails, credit cards, phone numbers, and API tokens before case inputs are written (add your own scrubber with `--redact-hook`).
 * `traceval run` exits nonzero on any failing case and diffs against a previous report with `--compare`, so CI can gate deploys on it.
 * `traceval calibrate` measures judge-vs-human agreement per cluster and flags rubrics the automated judge scores unreliably.
+
+## How traceval differs from Langfuse, LangSmith, and eval frameworks
+
+Langfuse and LangSmith both support building eval datasets from traces, inside their platforms: you select the production traces where the agent failed and add them to a dataset, then run evaluations there. [LangSmith's Insights Agent](https://docs.langchain.com/langsmith/insights) goes further and clusters failure modes from your traces automatically. These are good tools and traceval reads their exports rather than competing with them.
+
+traceval is the standalone version of that workflow: it reads the trace files you already exported and compiles them into a pytest suite you commit to your own repo. No account, no SDK instrumentation, no platform to adopt, works offline.
+
+| | Langfuse / LangSmith | traceval |
+|---|---|---|
+| Where evals live | their platform | your repo (committed pytest) |
+| Requires an account or SDK | yes | no |
+| Runs offline | no | yes (FakeJudge default) |
+| Failure to committed test | manual, multi-step | one command |
+
+[DeepEval](https://github.com/confident-ai/deepeval) is a framework you write evals in; traceval is a compiler that generates them from your trace exports. They can coexist, since traceval's output is plain pytest.
 
 ## Walkthrough on your own traces
 
@@ -179,7 +194,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: theramkm/traceval@v0.2.5
+      - uses: theramkm/traceval@v0.2.6
         with:
           evals-dir: evals/
           target: myapp.agent:invoke_agent   # or an HTTP URL
@@ -198,3 +213,14 @@ Run the test suite with `make test` and the full gate set with `make lint`.
 * **Side-Effect Free**: traceval assertions evaluate input/output matches. It does not attempt to replay side effects (e.g., updating database records) on mock tools.
 * **Text Telemetry**: The canonical model is optimized for text logs. Image or multimodal payloads in traces are logged as references.
 * **Static Visualization**: The coverage report is a portable, single-file HTML page. There is no hosted web service.
+
+## FAQ
+
+**Doesn't LangSmith or Langfuse already do this?**
+Yes, inside their platforms ([LangSmith Insights](https://docs.langchain.com/langsmith/insights), [Langfuse offline evals](https://langfuse.com/docs/evaluation/get-started/offline)). traceval is for when you want the tests in your own repo, runnable by plain pytest in any CI, with no vendor in the loop. It reads their exports rather than replacing them.
+
+**Why not DeepEval?**
+Different layer: DeepEval is the assertion framework you write evals in, traceval is the suite generator that produces them from traces. Use both if you like, since traceval emits plain pytest.
+
+**What happens when the export formats change?**
+Adapters track the documented export shapes, the test fixtures are the contract that catches drift, and the generic JSONL format is the guaranteed on-ramp if a backend shape moves out from under an adapter. Format drift is a known maintenance cost, documented in [docs/formats.md](https://github.com/theramkm/traceval/blob/main/docs/formats.md).
