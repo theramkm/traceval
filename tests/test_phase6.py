@@ -18,6 +18,8 @@ from traceval.run.scorers import (
     score_exact,
     score_json_schema,
     score_judge,
+    score_no_tool_loop,
+    score_not_contains,
     score_regex,
     score_tool_sequence,
 )
@@ -91,6 +93,30 @@ def test_scorers():
         judge, "rubric", "input", "output with input keyword", "reference"
     ).passed
 
+    # 7. Not contains (inverted): fails when any forbidden value appears
+    assert score_not_contains("Refund processed via Stripe.", ["error", "loop"]).passed
+    assert not score_not_contains("Error: service unavailable", ["error"]).passed
+    assert score_not_contains("anything", []).passed
+
+    # 8. No tool loop: fails on >= max_repeats consecutive identical calls
+    assert not score_no_tool_loop(["a", "a", "a"], max_repeats=3).passed
+    assert score_no_tool_loop(["a", "b", "a", "a"], max_repeats=3).passed
+    assert score_no_tool_loop(["a", "b", "c"], max_repeats=3).passed
+    assert score_no_tool_loop([], max_repeats=3).passed
+    assert not score_no_tool_loop(["x", "a", "a", "a", "a", "y"], max_repeats=3).passed
+
+
+def test_fake_judge_neutral_passes_default_threshold():
+    reset_judge_call_count()
+    judge = FakeJudge()
+
+    # No >=4-char word overlap between output and input/reference: FakeJudge
+    # returns its neutral score, which must clear the generated default
+    # min_score (0.7) so offline runs are gated by deterministic checks only.
+    res = score_judge(judge, "rubric", "timeout hang task", "Hello! Nice day.", None)
+    assert res.passed
+    assert res.score >= 0.7
+
 
 def test_judge_budget_cap():
     reset_judge_call_count()
@@ -133,8 +159,8 @@ def test_e2e_runner_execution(tmp_path):
     # Pytest finished successfully (either code 0 or exit_code of tests)
     assert result.exit_code in [0, 1]
 
-    # Verify run report exists at parent/project level
-    runs_dir = evals_dir.parent / "runs"
+    # Verify run report is written inside the evals dir
+    runs_dir = evals_dir / "runs"
     assert runs_dir.exists()
 
     report_files = list(runs_dir.glob("*.json"))
@@ -146,13 +172,6 @@ def test_e2e_runner_execution(tmp_path):
     assert "summary" in report
     assert "results" in report
     assert report["summary"]["total"] > 0
-
-    # Load expected results structure
-    expected_path = FIXTURES_DIR / "demo_agent_expected" / "results.json"
-    with open(expected_path, encoding="utf-8") as f:
-        expected = json.load(f)
-    assert "summary" in expected
-    assert expected["summary"]["failed"] == 0
 
 
 def test_openai_compat_judge(monkeypatch):

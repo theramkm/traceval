@@ -16,15 +16,16 @@ echo -e "\n=== 4. Generate eval suite ==="
 rm -rf demo_evals/
 uv run python3 src/traceval/cli.py generate demo_traces.db -o demo_evals/ --include-failures
 
-echo -e "\n=== 5. Run evals against healthy demo agent ==="
+echo -e "\n=== 5. Run evals against healthy demo agent (must pass) ==="
 # We add --with fastapi --with uvicorn --with pytest so that all run dependencies are active
-HEALTHY_REPORT=$(uv run --with fastapi --with uvicorn --with pytest python3 src/traceval/cli.py run demo_evals/ --target examples.demo_agent.agent:invoke_agent --judge fake | grep -o 'demo_evals/runs/run_.*\.json' | head -n 1) || true
+# set -e enforces the core promise here: the healthy agent passes its own suite (exit 0)
+uv run --with fastapi --with uvicorn --with pytest python3 src/traceval/cli.py run demo_evals/ --target examples.demo_agent.core:invoke_agent --judge fake
+HEALTHY_REPORT=$(ls -t demo_evals/runs/run_*.json | head -n 1)
 
-echo -e "\n=== 6. Run evals against buggy demo agent and compare ==="
-if [ -n "$HEALTHY_REPORT" ]; then
-  # Should report regressions and exit with failure code 1
-  BUGGY=true uv run --with fastapi --with uvicorn --with pytest python3 src/traceval/cli.py run demo_evals/ --target examples.demo_agent.agent:invoke_agent --judge fake --compare "$HEALTHY_REPORT" || echo "✅ E2E regression check passed: traceval correctly detected regressions and exited with failure status!"
+echo -e "\n=== 6. Run evals against buggy demo agent and compare (must fail) ==="
+if BUGGY=true uv run --with fastapi --with uvicorn --with pytest python3 src/traceval/cli.py run demo_evals/ --target examples.demo_agent.core:invoke_agent --judge fake --compare "$HEALTHY_REPORT"; then
+  echo "❌ E2E regression check FAILED: buggy agent passed the suite!"
+  exit 1
 else
-  # Fallback if grep failed to capture path
-  BUGGY=true uv run --with fastapi --with uvicorn --with pytest python3 src/traceval/cli.py run demo_evals/ --target examples.demo_agent.agent:invoke_agent --judge fake || echo "✅ E2E regression check passed: traceval correctly detected regressions!"
+  echo "✅ E2E regression check passed: traceval correctly detected regressions and exited with failure status!"
 fi

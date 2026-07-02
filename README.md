@@ -108,10 +108,10 @@ traceval generate traces.db -o evals/ --include-failures
 #### 4. Run Evaluations & Detect Regressions
 ```bash
 # Run against the healthy agent (100% Pass)
-traceval run evals/ --target examples.demo_agent.agent:invoke_agent --judge fake
+traceval run evals/ --target examples.demo_agent.core:invoke_agent --judge fake
 
 # Run against the buggy agent (Detects regressions and exits with status 1)
-BUGGY=true traceval run evals/ --target examples.demo_agent.agent:invoke_agent --judge fake
+BUGGY=true traceval run evals/ --target examples.demo_agent.core:invoke_agent --judge fake
 ```
 
 ---

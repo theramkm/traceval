@@ -143,6 +143,9 @@ def run(
     judge: str = typer.Option("fake", help="fake|openai"),
     compare: str = typer.Option(None, help="Compare with previous run JSON report"),
     only: str = typer.Option(None, help="Filter by cluster or case ID"),
+    runs_dir: str = typer.Option(
+        None, help="Directory for run reports (default: <evals_dir>/runs)"
+    ),
 ) -> None:
     """Run generated evals against target."""
     import pytest
@@ -158,6 +161,8 @@ def run(
         args.extend(["--compare", compare])
     if only:
         args.extend(["--only", only])
+    if runs_dir:
+        args.extend(["--runs-dir", runs_dir])
 
     # Run pytest programmatically
     exit_code = pytest.main(args)

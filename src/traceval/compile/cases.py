@@ -1,4 +1,5 @@
 import importlib
+import json
 import re
 from collections.abc import Callable
 from typing import Any
@@ -53,6 +54,111 @@ def load_redact_hook(hook_str: str) -> Callable[[str], str]:
 
     func = getattr(mod, func_name)
     return typing.cast(Callable[[str], str], func)
+
+
+def _judge_check(cluster_id: str) -> dict[str, Any]:
+    return {
+        "type": "judge",
+        "rubric": f"rubrics/{cluster_id}.md",
+        "min_score": 0.7,
+    }
+
+
+def _build_golden_checks(trace: Trace, cluster_id: str) -> list[dict[str, Any]]:
+    """Positive checks copied from a successful trace's recorded behavior."""
+    tools_used = [
+        step.tool.name for step in trace.steps if step.kind == "tool" and step.tool
+    ]
+
+    # Build json_schema check if final output parses as json
+    final_out = trace.final_output or ""
+    is_json = False
+    try:
+        if final_out.strip().startswith(("{", "[")):
+            json.loads(final_out)
+            is_json = True
+    except Exception:
+        pass
+
+    # Inferred simple contains checks from high TF-IDF terms or words
+    contains_values = []
+    if trace.final_output:
+        words = tokenize(trace.final_output)
+        # Pick up to 2 representative terms
+        contains_values = words[:2]
+
+    checks: list[dict[str, Any]] = []
+    if is_json:
+        checks.append(
+            {
+                "type": "json_schema",
+                "schema": {
+                    "type": "object",
+                    "properties": {},
+                    "required": [],
+                },
+            }
+        )
+    if contains_values:
+        checks.append(
+            {
+                "type": "contains_any",
+                "values": contains_values,
+            }
+        )
+    if tools_used:
+        checks.append(
+            {
+                "type": "tool_sequence",
+                "tools": tools_used,
+            }
+        )
+
+    checks.append(_judge_check(cluster_id))
+    return checks
+
+
+def _error_signature_tokens(final_output: str, task_input: str) -> list[str]:
+    """Tokens characteristic of a failure output, for not_contains checks.
+
+    Tokens that also appear in the task input are excluded (a healthy answer
+    naturally echoes the question), as are short generic words.
+    """
+    input_tokens = set(tokenize(task_input))
+    signature: list[str] = []
+    for token in tokenize(final_output):
+        if len(token) < 4 or token in input_tokens or token in signature:
+            continue
+        signature.append(token)
+        if len(signature) == 4:
+            break
+    return signature
+
+
+def _build_regression_checks(trace: Trace, cluster_id: str) -> list[dict[str, Any]]:
+    """Inverted checks: the agent must NOT reproduce the recorded failure.
+
+    Nothing from a failure trace is asserted as a positive expectation --
+    regression cases mean "the agent must now not fail this way", so the
+    failure's output tokens become forbidden and its loop becomes a bound.
+    """
+    checks: list[dict[str, Any]] = []
+    label = trace.outcome.label if trace.outcome else "unknown"
+    final_out = trace.final_output or ""
+
+    if final_out.strip():
+        signature = _error_signature_tokens(final_out, trace.task_input)
+        if signature:
+            checks.append({"type": "not_contains", "values": signature})
+    else:
+        # The failure produced no output (e.g. timeout); require any output.
+        checks.append({"type": "regex", "pattern": r"\S"})
+
+    if label == "loop":
+        checks.append({"type": "no_tool_loop", "max_repeats": 3})
+
+    checks.append(_judge_check(cluster_id))
+    return checks
 
 
 def select_and_redact_cases(
@@ -123,66 +229,26 @@ def select_and_redact_cases(
                     cases_to_generate.append((g, "golden"))
 
         for trace, kind in cases_to_generate:
-            # Build tool sequence check parameters
-            tools_used = []
-            for step in trace.steps:
-                if step.kind == "tool" and step.tool:
-                    tools_used.append(step.tool.name)
-
-            # Build exact or json_schema checks if final output parses as json
-            final_out = trace.final_output or ""
-            is_json = False
-            try:
-                if final_out.strip().startswith(("{", "[")):
-                    import json
-
-                    json.loads(final_out)
-                    is_json = True
-            except Exception:
-                pass
-
-            # Inferred simple contains checks from high TF-IDF terms or words
-            contains_values = []
-            if trace.final_output:
-                words = tokenize(trace.final_output)
-                # Pick up to 2 representative terms
-                contains_values = words[:2]
-
-            checks: list[dict[str, Any]] = []
-            if is_json:
-                checks.append(
-                    {
-                        "type": "json_schema",
-                        "schema": {
-                            "type": "object",
-                            "properties": {},
-                            "required": [],
-                        },
-                    }
+            if kind == "regression":
+                checks = _build_regression_checks(trace, cluster.id)
+                # The failure output must not reach the judge as a golden
+                # reference; keep it in notes for human reviewers instead.
+                reference_output = ""
+                label = trace.outcome.label if trace.outcome else "unknown"
+                failure_output = redact_text(trace.final_output or "", custom_hook)
+                notes = (
+                    f"AUTO-GENERATED regression case from failed trace "
+                    f"{trace.trace_id} (label={label}): the agent must NOT "
+                    f"fail this way again. Source failure output: "
+                    f"{failure_output!r}. Review checks before trusting."
                 )
-            if contains_values:
-                checks.append(
-                    {
-                        "type": "contains_any",
-                        "values": contains_values,
-                    }
+            else:
+                checks = _build_golden_checks(trace, cluster.id)
+                reference_output = redact_text(trace.final_output or "", custom_hook)
+                notes = (
+                    f"AUTO-GENERATED from trace {trace.trace_id}. "
+                    f"Review checks before trusting."
                 )
-            if tools_used:
-                checks.append(
-                    {
-                        "type": "tool_sequence",
-                        "tools": tools_used,
-                    }
-                )
-
-            # Always add judge check with rubric reference
-            checks.append(
-                {
-                    "type": "judge",
-                    "rubric": f"rubrics/{cluster.id}.md",
-                    "min_score": 0.7,
-                }
-            )
 
             # Build case object
             case_data = {
@@ -193,11 +259,8 @@ def select_and_redact_cases(
                 "kind": kind,
                 "input": redact_text(trace.task_input, custom_hook),
                 "expected": {"checks": checks},
-                "reference_output": redact_text(trace.final_output or "", custom_hook),
-                "notes": (
-                    f"AUTO-GENERATED from trace {trace.trace_id}. "
-                    f"Review checks before trusting."
-                ),
+                "reference_output": reference_output,
+                "notes": notes,
             }
             selected_cases.append(case_data)
 

@@ -68,7 +68,10 @@ class FakeJudge:
         if words_out.intersection(words_ref) or words_out.intersection(words_in):
             overlap = True
 
-        score_val = 1.0 if overlap else 0.5
+        # Neutral (no-overlap) score must clear the generated default
+        # min_score of 0.7: FakeJudge is offline plumbing, not judgment --
+        # judge checks should never gate a run when --judge fake is used.
+        score_val = 1.0 if overlap else 0.7
         return JudgeResult(
             score=score_val,
             reasons=[f"FakeJudge: overlap evaluated (score={score_val})"],

@@ -8,6 +8,8 @@ from traceval.run.scorers import (
     score_exact,
     score_json_schema,
     score_judge,
+    score_no_tool_loop,
+    score_not_contains,
     score_regex,
     score_tool_sequence,
 )
@@ -48,6 +50,13 @@ def run_single_case(
             res_score = score_exact(output_text, check.get("value", ""))
         elif check_type == "contains_any":
             res_score = score_contains_any(output_text, check.get("values", []))
+        elif check_type == "not_contains":
+            res_score = score_not_contains(output_text, check.get("values", []))
+        elif check_type == "no_tool_loop":
+            res_score = score_no_tool_loop(
+                actual_tools,
+                max_repeats=check.get("max_repeats", 3),
+            )
         elif check_type == "regex":
             res_score = score_regex(output_text, check.get("pattern", ""))
         elif check_type == "json_schema":

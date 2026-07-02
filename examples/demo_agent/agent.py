@@ -4,7 +4,9 @@ import os
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-from examples.demo_agent.core import run_agent_logic
+from examples.demo_agent.core import invoke_agent, run_agent_logic
+
+__all__ = ["app", "invoke_agent", "run_agent_logic"]
 
 app = FastAPI(title="traceval Demo Agent")
 

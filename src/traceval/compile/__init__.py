@@ -40,7 +40,7 @@ def generate_evals(
         emit_yaml_suite(cases, output_dir)
 
         # 2. Emit rubrics Markdown
-        emit_rubrics(clusters, output_dir)
+        emit_rubrics(clusters, output_dir, traces=traces)
 
         # 3. Emit pytest suite (conftest.py + test_generated.py)
         emit_pytest_suite(output_dir)

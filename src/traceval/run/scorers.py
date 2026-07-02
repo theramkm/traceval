@@ -49,6 +49,24 @@ def score_contains_any(output: str, values: list[str]) -> ScoreResult:
     )
 
 
+def score_not_contains(output: str, values: list[str]) -> ScoreResult:
+    matched = []
+    output_lower = output.lower()
+    for val in values:
+        if val.lower() in output_lower:
+            matched.append(val)
+    passed = len(matched) == 0
+    return ScoreResult(
+        passed=passed,
+        score=1.0 if passed else 0.0,
+        detail=(
+            f"No forbidden values present: {values}"
+            if passed
+            else f"Forbidden values found in output: {matched}"
+        ),
+    )
+
+
 def score_regex(output: str, pattern: str) -> ScoreResult:
     match = re.search(pattern, output, re.IGNORECASE)
     passed = match is not None
@@ -124,6 +142,35 @@ def score_tool_sequence(
                 else f"Tools sequence mismatch. Expected {expected_tools}, got {actual_tools}"
             ),
         )
+
+
+def score_no_tool_loop(actual_tools: list[str], max_repeats: int = 3) -> ScoreResult:
+    # The runner only sees tool names (targets return flattened tool_calls), so
+    # "identical call" degrades to "same name called consecutively" -- a looser
+    # variant of the R_LOOP labeler rule in traceval.analyze.outcomes.
+    longest_run = 0
+    longest_tool = None
+    prev = None
+    run_len = 0
+    for name in actual_tools:
+        run_len = run_len + 1 if name == prev else 1
+        prev = name
+        if run_len > longest_run:
+            longest_run = run_len
+            longest_tool = name
+    passed = longest_run < max_repeats
+    return ScoreResult(
+        passed=passed,
+        score=1.0 if passed else 0.0,
+        detail=(
+            f"No tool called {max_repeats}+ times consecutively"
+            if passed
+            else (
+                f"Tool loop detected: '{longest_tool}' called "
+                f"{longest_run} times consecutively (limit {max_repeats})"
+            )
+        ),
+    )
 
 
 def score_judge(

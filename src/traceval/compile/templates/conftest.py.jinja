@@ -15,10 +15,11 @@ def pytest_addoption(parser):
     parser.addoption("--judge", action="store", default="fake", help="fake|openai")
     parser.addoption("--compare", action="store", default=None, help="Previous run JSON report")
     parser.addoption("--only", action="store", default=None, help="Filter by cluster or case ID")
+    parser.addoption("--runs-dir", action="store", default=None, help="Directory for run reports (default: <evals>/runs)")
 
 def pytest_configure(config):
     # Prevent pytest cache from polluting evals/
-    config.option.cache_dir = str(Path(__file__).parent.parent / ".pytest_cache")
+    config.option.cache_dir = str(Path(__file__).resolve().parent.parent / ".pytest_cache")
 
 def pytest_generate_tests(metafunc):
     if "eval_case" in metafunc.fixturenames:
@@ -77,12 +78,19 @@ def pytest_sessionfinish(session, exitstatus):
     if not _results_accumulator:
         return
     
-    runs_dir = Path(__file__).parent.parent / "runs"
-    runs_dir.mkdir(exist_ok=True)
+    runs_opt = session.config.getoption("--runs-dir")
+    if runs_opt:
+        runs_dir = Path(runs_opt).resolve()
+    else:
+        # Anchor inside the evals dir, never relative to the invocation cwd
+        runs_dir = Path(__file__).resolve().parent / "runs"
+    runs_dir.mkdir(parents=True, exist_ok=True)
     
     from datetime import datetime, timezone
     import json
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    # Microsecond precision: back-to-back runs (e.g. healthy then buggy with
+    # --compare) must not overwrite each other's reports.
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     report_file = runs_dir / f"run_{timestamp}.json"
     
     passed_count = sum(1 for r in _results_accumulator if r["passed"])

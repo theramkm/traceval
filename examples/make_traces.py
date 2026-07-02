@@ -6,10 +6,14 @@ from pathlib import Path
 
 
 def generate_traces_file(output_path: Path) -> None:
+    # Deterministic output: keeps the committed synthetic_traces.jsonl stable
+    # across regenerations (and cluster counts stable in tests).
+    random.seed(42)
+
     traces = []
 
-    # Base timestamp
-    base_time = datetime.now(UTC) - timedelta(days=2)
+    # Fixed base timestamp (see determinism note above)
+    base_time = datetime(2026, 6, 30, 12, 0, 0, tzinfo=UTC)
 
     # 1. Generate 120 success traces
     # Orders, refunds, KB searches
