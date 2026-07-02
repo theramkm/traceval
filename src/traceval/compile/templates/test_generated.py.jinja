@@ -1,0 +1,17 @@
+# AUTO-GENERATED, review me before trusting in CI
+from conftest import _results_accumulator
+from traceval.run.runner import run_single_case
+
+def test_case(eval_case, target_runner, judge_runner):
+    result = run_single_case(eval_case, target_runner, judge_runner)
+    
+    # Save results to session accumulator
+    _results_accumulator.append({
+        "case_id": eval_case["id"],
+        "cluster": eval_case["cluster"],
+        "passed": result["passed"],
+        "latency_ms": result["latency_ms"],
+        "scores": result["scores"],
+    })
+    
+    assert result["passed"], f"Case {eval_case['id']} failed: {result['detail']}"

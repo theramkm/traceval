@@ -1,0 +1,151 @@
+# AUTO-GENERATED, review me before trusting in CI
+import pytest
+import os
+import yaml
+from pathlib import Path
+from traceval.run.target import resolve_target
+from traceval.run.judge import resolve_judge
+from traceval.run.runner import run_single_case
+
+def pytest_addoption(parser):
+    parser.addoption("--target", action="store", default=None, help="HTTP URL or module:fn")
+    parser.addoption("--judge", action="store", default="fake", help="fake|openai")
+    parser.addoption("--compare", action="store", default=None, help="Previous run JSON report")
+    parser.addoption("--only", action="store", default=None, help="Filter by cluster or case ID")
+
+def pytest_generate_tests(metafunc):
+    if "eval_case" in metafunc.fixturenames:
+        # Load all cases recursively
+        cases_dir = Path(__file__).parent / "cases"
+        cases = []
+        if cases_dir.exists():
+            for p in cases_dir.rglob("*.yaml"):
+                try:
+                    with open(p, encoding="utf-8") as f:
+                        data = yaml.safe_load(f)
+                        if isinstance(data, dict) and "id" in data:
+                            cases.append(data)
+                except Exception:
+                    pass
+
+        # Sort cases by ID for deterministic execution
+        cases.sort(key=lambda c: c["id"])
+
+        # Filter by option --only
+        only_opt = metafunc.config.getoption("--only")
+        if only_opt:
+            cases = [c for c in cases if only_opt in c["id"] or only_opt in c["cluster"]]
+
+        metafunc.parametrize("eval_case", cases, ids=[c["id"] for c in cases])
+
+@pytest.fixture(scope="session")
+def target_runner(request):
+    target_opt = request.config.getoption("--target")
+    if not target_opt:
+        config_path = Path(__file__).parent / "traceval.yaml"
+        if config_path.exists():
+            try:
+                with open(config_path, encoding="utf-8") as f:
+                    config = yaml.safe_load(f)
+                    target_opt = config.get("target", {}).get("default_url")
+            except Exception:
+                pass
+    if not target_opt:
+        pytest.fail("No target specified. Use --target option or set in traceval.yaml.")
+    return resolve_target(target_opt)
+
+@pytest.fixture(scope="session")
+def judge_runner(request):
+    judge_opt = request.config.getoption("--judge")
+    return resolve_judge(judge_opt)
+
+# Accumulator for final report
+_results_accumulator = []
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_sessionstart(session):
+    _results_accumulator.clear()
+
+def pytest_sessionfinish(session, exitstatus):
+    if not _results_accumulator:
+        return
+    
+    runs_dir = Path(__file__).parent / "runs"
+    runs_dir.mkdir(exist_ok=True)
+    
+    from datetime import datetime
+    import json
+    timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    report_file = runs_dir / f"run_{timestamp}.json"
+    
+    passed_count = sum(1 for r in _results_accumulator if r["passed"])
+    failed_count = len(_results_accumulator) - passed_count
+    
+    report = {
+        "timestamp": datetime.utcnow().isoformat(),
+        "summary": {
+            "total": len(_results_accumulator),
+            "passed": passed_count,
+            "failed": failed_count,
+        },
+        "results": _results_accumulator
+    }
+    
+    report_file.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    
+    # Rich Table Terminal output
+    from rich.console import Console
+    from rich.table import Table
+    
+    console = Console()
+    console.print("\\n[bold purple]traceval Run Summary[/bold purple]")
+    
+    table = Table(show_header=True, header_style="bold blue")
+    table.add_column("Case ID", style="cyan")
+    table.add_column("Cluster", style="magenta")
+    table.add_column("Outcome", justify="center")
+    table.add_column("Latency (ms)", justify="right")
+    
+    for r in _results_accumulator:
+        outcome_str = "[bold green]PASS[/bold green]" if r["passed"] else "[bold red]FAIL[/bold red]"
+        table.add_row(
+            r["case_id"],
+            r["cluster"],
+            outcome_str,
+            f"{r['latency_ms']:.1f}"
+        )
+    
+    console.print(table)
+    console.print(f"Total: {len(_results_accumulator)} | Passed: {passed_count} | Failed: {failed_count}")
+    console.print(f"Run report written to: {report_file}")
+    
+    # Optional --compare checking
+    compare_opt = session.config.getoption("--compare")
+    if compare_opt:
+        comp_path = Path(compare_opt)
+        if comp_path.exists():
+            try:
+                with open(comp_path, encoding="utf-8") as f:
+                    prev = json.load(f)
+                prev_results = {r["case_id"]: r for r in prev.get("results", [])}
+                
+                regressions = []
+                improvements = []
+                for curr in _results_accumulator:
+                    prev_c = prev_results.get(curr["case_id"])
+                    if prev_c:
+                        if prev_c["passed"] and not curr["passed"]:
+                            regressions.append(curr["case_id"])
+                        elif not prev_c["passed"] and curr["passed"]:
+                            improvements.append(curr["case_id"])
+                
+                if regressions:
+                    console.print("\\n[bold red]⚠️ REGRESSIONS DETECTED:[/bold red]")
+                    for r in regressions:
+                        console.print(f"  - {r}")
+                if improvements:
+                    console.print("\\n[bold green]🚀 IMPROVEMENTS DETECTED:[/bold green]")
+                    for imp in improvements:
+                        console.print(f"  - {imp}")
+            except Exception as e:
+                console.print(f"\\nFailed to run regression comparison: {e}")
