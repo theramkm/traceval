@@ -34,6 +34,33 @@ jobs:
     - name: Run Tests with Coverage
       run: uv run pytest --cov=src/traceval --cov-fail-under=85
 
+  demo-wheel:
+    # The pip-user path is what ships: build the wheel, install it in a
+    # clean venv, and run the packaged demo from an empty directory.
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Build wheel
+      run: |
+        pip install build
+        python -m build --wheel
+
+    - name: Install wheel in a clean venv and run the demo
+      run: |
+        python -m venv /tmp/wheel-venv
+        /tmp/wheel-venv/bin/pip install dist/*.whl
+        mkdir /tmp/demo-smoke
+        cd /tmp/demo-smoke
+        /tmp/wheel-venv/bin/traceval demo
+        /tmp/wheel-venv/bin/traceval analyze traceval-demo/traces.db --json | python -m json.tool
+
   demo-action:
     # Dogfoods action.yml against the demo agent: the only CI coverage the
     # user-facing GitHub Action gets.
@@ -50,15 +77,13 @@ jobs:
     - name: Generate demo eval suite
       run: |
         pip install .
-        python examples/make_traces.py
-        traceval ingest examples/synthetic_traces.jsonl -o demo_traces.db
-        traceval generate demo_traces.db -o demo_evals/ --include-failures
+        traceval demo -o demo-artifacts
 
     - name: Run evals via the action (healthy agent must pass)
       uses: ./
       with:
-        evals-dir: demo_evals
-        target: examples.demo_agent.core:invoke_agent
+        evals-dir: demo-artifacts/evals
+        target: traceval.demo.agent:invoke_agent
         traceval-version: local
 
     - name: Run evals via the action (buggy agent must fail)
@@ -68,20 +93,20 @@ jobs:
       env:
         BUGGY: "true"
       with:
-        evals-dir: demo_evals
-        target: examples.demo_agent.core:invoke_agent
+        evals-dir: demo-artifacts/evals
+        target: traceval.demo.agent:invoke_agent
         traceval-version: local
 
     - name: Assert buggy run failed
       run: |
         if [ "${{ steps.buggy.outcome }}" != "failure" ]; then
-          echo "❌ Buggy agent unexpectedly passed the eval suite"
+          echo "Buggy agent unexpectedly passed the eval suite"
           exit 1
         fi
-        echo "✅ Action correctly failed the job for the buggy agent"
+        echo "Action correctly failed the job for the buggy agent"
 
   tag-and-release:
-    needs: [test, demo-action]
+    needs: [test, demo-wheel, demo-action]
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     runs-on: ubuntu-latest
     permissions:

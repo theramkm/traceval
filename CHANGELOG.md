@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-07-02
+
+### Added
+- `--json` on `ingest`, `analyze`, `generate`, and `run`: suppresses human-readable output and prints a single JSON object to stdout for scripting (`run` still exits nonzero on failures). The README previously claimed this flag existed; now it does.
+- `traceval demo`: runs the full trace-to-eval loop end-to-end with a built-in demo agent from a plain pip install (no repo clone). Creates `./traceval-demo/` (override with `-o`), refuses to write into a non-empty directory unless `--force`, and `--force` only ever replaces the demo's own artifacts. The demo agent and trace generator moved into the package (`traceval.demo`); `examples/` keeps thin wrappers.
+- `traceval serve [dir]`: serves the analysis report directory on localhost with Python's stdlib http.server and prints the report URL. Not a web UI.
+- Generated `test_generated.py` opens with the three commands a new teammate needs; the run summary ends with a `traceval calibrate` hint for the report just written.
+- CI: wheel-based demo smoke job (build wheel, install into a clean venv, run `traceval demo` from an empty directory) so the pip-user path is what CI tests. Releases now gate on it.
+
+### Changed
+- Failure-signature tokens for `not_contains` checks are now distinctiveness-filtered: a token qualifies only if it appears in fewer than 10% of success outputs (same-cluster successes preferred, all successes in the db as fallback). If no token survives, the check is omitted rather than emitting a junk forbidden list.
+- `not_contains` matching is word-boundary based and case-insensitive instead of raw substring: forbidding "error" no longer false-fails a healthy "no errors found".
+- README rewritten: real command outputs (regenerable via `scripts/readme-outputs.sh`), a live screenshot of the analysis report, evidence-based feature claims, plain pipeline diagram, and the GitHub Action example pinned to a release tag.
+
+### Fixed
+- Generated run summary printed a literal `\n` before "traceval Run Summary" (jinja over-escaping in the conftest template).
+- `analysis/report.html` version badge was hardcoded to v0.1.0; it now shows the installed traceval version.
+
 ## [0.2.0] - 2026-07-02
 
 ### Added
