@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4] - 2026-07-02
+
+### Added
+- **GitHub Action** (`action.yml`): gate CI on your generated eval suite with `uses: theramkm/traceval@main`. Inputs: `evals-dir`, `target` (required); `judge`, `compare`, `only`, `runs-dir`, `traceval-version`, `python-version` (optional). The job fails whenever `traceval run` exits nonzero. Dogfooded in this repo's CI: the action runs the demo suite against the healthy agent (must pass) and the buggy agent (must fail), and releases are gated on it.
+
+### Changed
+- `pytest` is now a runtime dependency (was dev-only): `traceval run` executes the generated suite via pytest, so a plain `pip install traceval` now supports the full workflow.
+
 ## [0.1.3] - 2026-07-02
 
 ### Fixed

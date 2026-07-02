@@ -141,9 +141,32 @@ traceval generate <traces.db> -o <evals_dir/> [--per-cluster 3] [--include-failu
 
 ### Runner
 ```bash
-traceval run <evals_dir/> --target <url|module:function> [--judge fake|openai] [--compare runs/prev.json]
+traceval run <evals_dir/> --target <url|module:function> [--judge fake|openai] [--compare runs/prev.json] [--runs-dir path/]
 ```
-*Executes tests, scores output constraints (`exact`, `contains`, `regex`, `json_schema`, `tool_sequence`, `judge`), and logs to project-level `runs/` directory.*
+*Executes tests, scores output constraints (`exact`, `contains`, `not_contains`, `regex`, `json_schema`, `tool_sequence`, `no_tool_loop`, `judge`), and writes run reports to `<evals_dir>/runs/` (override with `--runs-dir`).*
+
+*Case kinds: `golden` cases assert the recorded successful behavior; `regression` cases (from failure traces) assert the failure does **not** recur — forbidden error tokens, no tool loops, non-empty output. A regression case passes for any agent that avoids that failure mode; goldens carry general bug detection.*
+
+---
+
+## 🛡️ GitHub Action
+
+Gate deploys on your generated eval suite. The action installs traceval, runs the suite, and fails the job on any regression (`traceval run` exits nonzero):
+
+```yaml
+jobs:
+  agent-evals:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: theramkm/traceval@main
+        with:
+          evals-dir: evals/
+          target: myapp.agent:invoke_agent   # or an HTTP URL
+          judge: fake                        # offline; use 'openai' with an API key for LLM judging
+```
+
+Inputs: `evals-dir` and `target` (required); `judge`, `compare`, `only`, `runs-dir`, `traceval-version`, `python-version` (optional). For a real LLM judge, set `judge: openai` and pass `OPENAI_API_KEY` (or `GEMINI_API_KEY`) via `env:` from your repository secrets.
 
 ---
 

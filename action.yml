@@ -1,0 +1,73 @@
+name: "traceval run"
+description: >-
+  Run a traceval-generated eval suite against your agent and fail the job on
+  regressions. Wraps `traceval run`, which exits nonzero when any case fails.
+branding:
+  icon: "check-circle"
+  color: "purple"
+
+inputs:
+  evals-dir:
+    description: "Path to the generated evals directory (contains cases/, conftest.py)"
+    required: true
+  target:
+    description: "Agent under test: HTTP URL or module:function callable"
+    required: true
+  judge:
+    description: "Judge to use: 'fake' (offline, deterministic) or 'openai' (needs OPENAI_API_KEY/GEMINI_API_KEY in env)"
+    required: false
+    default: "fake"
+  compare:
+    description: "Path to a previous run report JSON to diff against"
+    required: false
+    default: ""
+  only:
+    description: "Filter cases by cluster or case id substring"
+    required: false
+    default: ""
+  runs-dir:
+    description: "Directory for run reports (default: <evals-dir>/runs)"
+    required: false
+    default: ""
+  traceval-version:
+    description: "traceval version to install from PyPI (default: latest); 'local' installs the checked-out action repo itself (used for dogfooding)"
+    required: false
+    default: ""
+  python-version:
+    description: "Python version to set up"
+    required: false
+    default: "3.12"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install traceval
+      shell: bash
+      run: |
+        if [ "${{ inputs.traceval-version }}" = "local" ]; then
+          pip install "${{ github.action_path }}"
+        elif [ -n "${{ inputs.traceval-version }}" ]; then
+          pip install "traceval==${{ inputs.traceval-version }}"
+        else
+          pip install traceval
+        fi
+
+    - name: Run evals
+      shell: bash
+      run: |
+        args=(run "${{ inputs.evals-dir }}" --target "${{ inputs.target }}" --judge "${{ inputs.judge }}")
+        if [ -n "${{ inputs.compare }}" ]; then
+          args+=(--compare "${{ inputs.compare }}")
+        fi
+        if [ -n "${{ inputs.only }}" ]; then
+          args+=(--only "${{ inputs.only }}")
+        fi
+        if [ -n "${{ inputs.runs-dir }}" ]; then
+          args+=(--runs-dir "${{ inputs.runs-dir }}")
+        fi
+        traceval "${args[@]}"

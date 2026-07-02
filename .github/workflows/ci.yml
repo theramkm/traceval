@@ -34,8 +34,54 @@ jobs:
     - name: Run Tests with Coverage
       run: uv run pytest --cov=src/traceval --cov-fail-under=85
 
-  tag-and-release:
+  demo-action:
+    # Dogfoods action.yml against the demo agent: the only CI coverage the
+    # user-facing GitHub Action gets.
     needs: test
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Generate demo eval suite
+      run: |
+        pip install .
+        python examples/make_traces.py
+        traceval ingest examples/synthetic_traces.jsonl -o demo_traces.db
+        traceval generate demo_traces.db -o demo_evals/ --include-failures
+
+    - name: Run evals via the action (healthy agent must pass)
+      uses: ./
+      with:
+        evals-dir: demo_evals
+        target: examples.demo_agent.core:invoke_agent
+        traceval-version: local
+
+    - name: Run evals via the action (buggy agent must fail)
+      id: buggy
+      continue-on-error: true
+      uses: ./
+      env:
+        BUGGY: "true"
+      with:
+        evals-dir: demo_evals
+        target: examples.demo_agent.core:invoke_agent
+        traceval-version: local
+
+    - name: Assert buggy run failed
+      run: |
+        if [ "${{ steps.buggy.outcome }}" != "failure" ]; then
+          echo "❌ Buggy agent unexpectedly passed the eval suite"
+          exit 1
+        fi
+        echo "✅ Action correctly failed the job for the buggy agent"
+
+  tag-and-release:
+    needs: [test, demo-action]
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     runs-on: ubuntu-latest
     permissions:
