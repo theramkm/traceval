@@ -164,3 +164,5 @@ def pytest_sessionfinish(session, exitstatus):
                         console.print(f"  - {imp}")
             except Exception as e:
                 console.print(f"\nFailed to run regression comparison: {e}")
+
+    console.print(f"Calibrate the judge on this run: traceval calibrate {report_file}")

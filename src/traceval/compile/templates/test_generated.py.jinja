@@ -1,4 +1,17 @@
 # AUTO-GENERATED, review me before trusting in CI
+#
+# How to run this suite:
+#
+#   traceval run <this dir> --target myapp.agent:invoke_agent --judge fake
+#
+# or directly through pytest (same thing, same options):
+#
+#   pytest <this dir> --target myapp.agent:invoke_agent --judge fake
+#
+# then check how much you can trust the automated judge on the results:
+#
+#   traceval calibrate <this dir>/runs/run_<timestamp>.json
+#
 from conftest import _results_accumulator
 from traceval.run.runner import run_single_case
 
