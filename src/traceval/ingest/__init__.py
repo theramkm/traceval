@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Callable
 from pathlib import Path
 
 from traceval.ingest.base import Adapter
@@ -59,6 +60,7 @@ def ingest_file(
     format_name: str = "auto",
     log_path: Path | None = None,
     tool_span_globs: list[str] | None = None,
+    on_trace: Callable[[], None] | None = None,
 ) -> tuple[int, int, int, Path]:
     if format_name == "auto":
         format_name = detect_format(path)
@@ -93,6 +95,10 @@ def ingest_file(
                 span_count += len(trace.steps)
             except Exception as e:
                 logger.warning("Failed to save trace to DB: %s", str(e))
+            if on_trace is not None:
+                # Presentation hook (e.g. the CLI progress bar); no-op by
+                # default and never affects ingest results.
+                on_trace()
     finally:
         logger.removeHandler(handler)
         handler.close()

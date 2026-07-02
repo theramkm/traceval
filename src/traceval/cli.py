@@ -3,9 +3,11 @@ import os
 from pathlib import Path
 
 import typer
+from rich.markup import escape
 
 from traceval.analyze import run_analysis
 from traceval.compile import generate_evals
+from traceval.console import console, err_console
 from traceval.ingest import ingest_file
 from traceval.store import TraceStore
 
@@ -17,7 +19,7 @@ def version() -> None:
     """Print the version of traceval."""
     from traceval import __version__
 
-    typer.echo(f"traceval version {__version__}")
+    console.print(f"traceval version [bold]{__version__}[/bold]")
 
 
 @app.command()
@@ -39,15 +41,36 @@ def ingest(
     ),
 ) -> None:
     """Ingest trace logs into SQLite database."""
+    import sys
+
     globs = None
     if tool_span_names:
         globs = [g.strip() for g in tool_span_names.split(",") if g.strip()]
 
+    # Progress bar only for humans watching a terminal; never for pipes,
+    # CI, or --json (machine output stays byte-identical).
+    show_progress = sys.stdout.isatty() and not json_output
+
     db = TraceStore(output)
     try:
-        ok_count, span_count, warn_count, log_file = ingest_file(
-            Path(path), db, format_name=format, tool_span_globs=globs
-        )
+        if show_progress:
+            from rich.progress import Progress
+
+            with open(path, "rb") as fh:
+                total_lines = sum(1 for _ in fh)
+            with Progress(console=console, transient=True) as progress:
+                task = progress.add_task("Ingesting traces", total=total_lines)
+                ok_count, span_count, warn_count, log_file = ingest_file(
+                    Path(path),
+                    db,
+                    format_name=format,
+                    tool_span_globs=globs,
+                    on_trace=lambda: progress.advance(task),
+                )
+        else:
+            ok_count, span_count, warn_count, log_file = ingest_file(
+                Path(path), db, format_name=format, tool_span_globs=globs
+            )
         if json_output:
             typer.echo(
                 json.dumps(
@@ -61,12 +84,17 @@ def ingest(
                 )
             )
         elif warn_count > 0:
-            typer.echo(
-                f"Ingested {ok_count} traces ({span_count} spans). "
-                f"{warn_count} traces had warnings (see {log_file})."
+            console.print(
+                f"Ingested [bold]{ok_count}[/bold] traces "
+                f"([bold]{span_count}[/bold] spans). "
+                f"[yellow]{warn_count} traces had warnings[/yellow] "
+                f"(see [cyan]{escape(str(log_file))}[/cyan])."
             )
         else:
-            typer.echo(f"Ingested {ok_count} traces ({span_count} spans).")
+            console.print(
+                f"Ingested [bold]{ok_count}[/bold] traces "
+                f"([bold]{span_count}[/bold] spans)."
+            )
     finally:
         db.close()
 
@@ -84,7 +112,10 @@ def analyze(
     """Analyze ingested traces (labeling, clustering, coverage)."""
     db_p = Path(db_path)
     if not db_p.exists():
-        typer.echo(f"Error: database file {db_path} does not exist.", err=True)
+        err_console.print(
+            f"Error: database file {escape(db_path)} does not exist.",
+            style="bold red",
+        )
         raise typer.Exit(1)
 
     out_dir = Path(output)
@@ -136,26 +167,29 @@ def analyze(
         return
 
     if total == 0:
-        typer.echo("No traces found to analyze.")
+        console.print("[yellow]No traces found to analyze.[/yellow]")
         return
 
-    # Print outcomes formatted
+    # Print outcomes formatted: success green, every failure label red
     outcomes_list = []
     for k, v in summary["outcomes"].items():
         pct = round((v / total) * 100)
-        outcomes_list.append(f"{k} {pct}%")
+        color = "green" if k == "success" else "red"
+        outcomes_list.append(f"[{color}]{escape(k)} {pct}%[/{color}]")
     outcomes_str = " · ".join(outcomes_list)
-    typer.echo(f"Outcomes: {outcomes_str}")
+    console.print(f"[bold]Outcomes:[/bold] {outcomes_str}")
 
-    typer.echo(f"Clusters: {len(clusters)} task clusters found.")
+    console.print(f"[bold]Clusters:[/bold] {len(clusters)} task clusters found.")
 
     if top_fail:
-        typer.echo(
-            f'Top failure cluster: "{top_fail["name"]}" '
-            f"({top_fail['trace_count']} traces)"
+        console.print(
+            f'[bold]Top failure cluster:[/bold] "[magenta]{escape(top_fail["name"])}'
+            f'[/magenta]" ([bold]{top_fail["trace_count"]}[/bold] traces)'
         )
 
-    typer.echo(f"Report written to {out_dir / 'report.html'}")
+    console.print(
+        f"Report written to [cyan]{escape(str(out_dir / 'report.html'))}[/cyan]"
+    )
 
 
 @app.command()
@@ -176,7 +210,10 @@ def generate(
     """Generate eval cases, rubrics, and pytest harness from traces."""
     db_p = Path(db_path)
     if not db_p.exists():
-        typer.echo(f"Error: database file {db_path} does not exist.", err=True)
+        err_console.print(
+            f"Error: database file {escape(db_path)} does not exist.",
+            style="bold red",
+        )
         raise typer.Exit(1)
 
     out_dir = Path(output)
@@ -192,13 +229,16 @@ def generate(
         typer.echo(json.dumps({**counts, "output_dir": output}))
         return
 
-    typer.echo(
-        f"Wrote {counts['cases']} eval cases across {counts['clusters']} clusters "
-        f"→ {output}/cases/*.yaml"
+    out_esc = escape(output)
+    console.print(
+        f"Wrote [bold]{counts['cases']}[/bold] eval cases across "
+        f"[bold]{counts['clusters']}[/bold] clusters "
+        f"→ [cyan]{out_esc}/cases/*.yaml[/cyan]"
     )
-    typer.echo(f"Wrote judge rubrics → {output}/rubrics/*.md")
-    typer.echo(
-        f"Wrote pytest harness → {output}/test_generated.py, {output}/conftest.py"
+    console.print(f"Wrote judge rubrics → [cyan]{out_esc}/rubrics/*.md[/cyan]")
+    console.print(
+        f"Wrote pytest harness → [cyan]{out_esc}/test_generated.py[/cyan], "
+        f"[cyan]{out_esc}/conftest.py[/cyan]"
     )
 
 
@@ -293,14 +333,19 @@ def serve(
     """
     serve_dir = Path(directory)
     if not serve_dir.is_dir():
-        typer.echo(f"Error: {directory} is not a directory.", err=True)
+        err_console.print(
+            f"Error: {escape(directory)} is not a directory.", style="bold red"
+        )
         raise typer.Exit(1)
 
     with _report_server(serve_dir, port) as httpd:
         bound_port = httpd.server_address[1]
         page = "report.html" if (serve_dir / "report.html").exists() else ""
-        typer.echo(f"Serving {serve_dir} at http://127.0.0.1:{bound_port}/{page}")
-        typer.echo("Press Ctrl+C to stop.")
+        console.print(
+            f"Serving [cyan]{escape(str(serve_dir))}[/cyan] at "
+            f"[cyan]http://127.0.0.1:{bound_port}/{page}[/cyan]"
+        )
+        console.print("Press Ctrl+C to stop.")
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:
@@ -337,11 +382,11 @@ def demo(
     demo_artifacts = ["synthetic_traces.jsonl", "traces.db", "analysis", "evals"]
     if demo_dir.exists() and any(demo_dir.iterdir()):
         if not force:
-            typer.echo(
-                f"Error: {demo_dir} is not empty. Pass --force to refresh the "
-                "demo artifacts in place (only files the demo itself creates "
-                "are replaced; nothing else is deleted).",
-                err=True,
+            err_console.print(
+                f"Error: {escape(str(demo_dir))} is not empty. Pass --force to "
+                "refresh the demo artifacts in place (only files the demo "
+                "itself creates are replaced; nothing else is deleted).",
+                style="bold red",
             )
             raise typer.Exit(1)
         for name in demo_artifacts:
@@ -358,10 +403,10 @@ def demo(
     evals_dir = demo_dir / "evals"
     target = "traceval.demo.agent:invoke_agent"
 
-    typer.echo("=== 1/6 Generate synthetic traces ===")
+    console.print("=== 1/6 Generate synthetic traces ===", style="bold purple")
     generate_traces_file(traces_path)
 
-    typer.echo("\n=== 2/6 Ingest into SQLite ===")
+    console.print("\n=== 2/6 Ingest into SQLite ===", style="bold purple")
     store = TraceStore(db_path)
     try:
         ok_count, span_count, _warns, _log = ingest_file(
@@ -369,21 +414,28 @@ def demo(
         )
     finally:
         store.close()
-    typer.echo(f"Ingested {ok_count} traces ({span_count} spans) → {db_path}")
+    console.print(
+        f"Ingested [bold]{ok_count}[/bold] traces ([bold]{span_count}[/bold] "
+        f"spans) → [cyan]{escape(str(db_path))}[/cyan]"
+    )
 
-    typer.echo("\n=== 3/6 Analyze (label, cluster) ===")
+    console.print("\n=== 3/6 Analyze (label, cluster) ===", style="bold purple")
     analysis_dir.mkdir(parents=True, exist_ok=True)
     summary = run_analysis(db_path, output_dir=analysis_dir)
     (analysis_dir / "report.json").write_text(
         json.dumps(summary, indent=2), encoding="utf-8"
     )
-    typer.echo(f"{len(summary['clusters'])} clusters → {analysis_dir / 'report.html'}")
+    console.print(
+        f"[bold]{len(summary['clusters'])}[/bold] clusters → "
+        f"[cyan]{escape(str(analysis_dir / 'report.html'))}[/cyan]"
+    )
 
-    typer.echo("\n=== 4/6 Generate eval suite ===")
+    console.print("\n=== 4/6 Generate eval suite ===", style="bold purple")
     counts = generate_evals(db_path, evals_dir, include_failures=True)
-    typer.echo(
-        f"{counts['cases']} cases ({counts['golden']} golden, "
-        f"{counts['regression']} regression) → {evals_dir}"
+    console.print(
+        f"[bold]{counts['cases']}[/bold] cases ([bold]{counts['golden']}[/bold] "
+        f"golden, [bold]{counts['regression']}[/bold] regression) → "
+        f"[cyan]{escape(str(evals_dir))}[/cyan]"
     )
 
     def _run_suite(buggy: bool) -> int:
@@ -408,28 +460,51 @@ def demo(
         )
         return proc.returncode
 
-    typer.echo("\n=== 5/6 Run suite against the HEALTHY demo agent (must pass) ===")
+    console.print(
+        "\n=== 5/6 Run suite against the HEALTHY demo agent (must pass) ===",
+        style="bold purple",
+    )
     if _run_suite(buggy=False) != 0:
-        typer.echo("Error: the healthy agent failed its own generated suite.", err=True)
+        err_console.print(
+            "Error: the healthy agent failed its own generated suite.",
+            style="bold red",
+        )
         raise typer.Exit(1)
 
-    typer.echo("\n=== 6/6 Run suite against the BUGGY demo agent (must fail) ===")
+    console.print(
+        "\n=== 6/6 Run suite against the BUGGY demo agent (must fail) ===",
+        style="bold purple",
+    )
     if _run_suite(buggy=True) == 0:
-        typer.echo("Error: the buggy agent unexpectedly passed the suite.", err=True)
+        err_console.print(
+            "Error: the buggy agent unexpectedly passed the suite.",
+            style="bold red",
+        )
         raise typer.Exit(1)
 
     reports = sorted((evals_dir / "runs").glob("run_*.json"))
-    typer.echo("\n=== Demo complete: healthy agent PASSED, buggy agent FAILED ===")
-    typer.echo(f"Failure-cluster report: {analysis_dir / 'report.html'}")
+    console.print(
+        "\n[bold purple]=== Demo complete: healthy agent [green]PASSED[/green], "
+        "buggy agent [red]FAILED[/red] ===[/bold purple]"
+    )
+    console.print(
+        f"Failure-cluster report: [cyan]{escape(str(analysis_dir / 'report.html'))}"
+        f"[/cyan]"
+    )
     for r in reports[-2:]:
-        typer.echo(f"Run report: {r}")
-    typer.echo("\nRe-run any stage manually:")
-    typer.echo(f"  traceval ingest {traces_path} -o {db_path}")
-    typer.echo(f"  traceval analyze {db_path} -o {analysis_dir}")
-    typer.echo(f"  traceval generate {db_path} -o {evals_dir} --include-failures")
-    typer.echo(f"  traceval run {evals_dir} --target {target} --judge fake")
+        console.print(f"Run report: [cyan]{escape(str(r))}[/cyan]")
+    console.print("\n[bold]Re-run any stage manually:[/bold]")
+    console.print(f"  traceval ingest {traces_path} -o {db_path}", markup=False)
+    console.print(f"  traceval analyze {db_path} -o {analysis_dir}", markup=False)
+    console.print(
+        f"  traceval generate {db_path} -o {evals_dir} --include-failures",
+        markup=False,
+    )
+    console.print(
+        f"  traceval run {evals_dir} --target {target} --judge fake", markup=False
+    )
     if reports:
-        typer.echo(f"  traceval calibrate {reports[-1]}")
+        console.print(f"  traceval calibrate {reports[-1]}", markup=False)
 
 
 @app.command()
@@ -450,7 +525,6 @@ def calibrate(
     verdicts are hidden until the end), then reports judge-vs-human
     agreement overall and per cluster.
     """
-    from rich.console import Console
     from rich.panel import Panel
     from rich.table import Table
 
@@ -462,25 +536,26 @@ def calibrate(
 
     report_path = Path(run_report)
     if not report_path.exists():
-        typer.echo(f"Run report not found: {run_report}", err=True)
+        err_console.print(
+            f"Run report not found: {escape(run_report)}", style="bold red"
+        )
         raise typer.Exit(code=1)
     with open(report_path, encoding="utf-8") as f:
         report = json.load(f)
 
     judged = extract_judged_results(report)
     if not judged:
-        typer.echo(
+        err_console.print(
             "No judge-scored results with recorded outputs in this report. "
             "Reports written before traceval 0.2.0 lack the input/output "
             "fields calibrate needs: regenerate the suite (traceval generate) "
             "and rerun (traceval run) first.",
-            err=True,
+            style="yellow",
         )
         raise typer.Exit(code=1)
 
     picked = sample_judged(judged, sample, seed)
 
-    console = Console()
     console.print(
         f"\n[bold]Calibrating judge on {len(picked)} sampled case(s).[/bold] "
         "Label each output pass/fail; judge verdicts stay hidden until the end.\n"
@@ -540,7 +615,9 @@ def calibrate(
         json.dumps({"stats": stats, "labels": labeled}, indent=2),
         encoding="utf-8",
     )
-    console.print(f"Calibration report written to: {out_path}")
+    console.print(
+        f"Calibration report written to: [cyan]{escape(str(out_path))}[/cyan]"
+    )
 
 
 if __name__ == "__main__":

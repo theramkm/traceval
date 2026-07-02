@@ -60,7 +60,7 @@ graph LR
 
 ## Walkthrough on your own traces
 
-The command outputs below are real, captured from a run over the demo trace set (regenerate them with `scripts/readme-outputs.sh`).
+The command outputs below are real, captured from a run over the demo trace set (regenerate them with `scripts/readme-outputs.sh`). CLI output is colorized in terminals; rich auto-disables styling when the stream is not a TTY and honors the `NO_COLOR` environment variable, so piped and CI output is always plain text.
 
 ### 1. Ingest
 

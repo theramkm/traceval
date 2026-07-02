@@ -210,8 +210,13 @@ def pytest_sessionfinish(session, exitstatus):
             )
 
         console.print(table)
-    console.print(f"Total: {total_count} | Passed: {passed_count} | Failed: {failed_count} | Errored: {errored_count}")
-    console.print(f"Run report written to: {report_file}")
+    from rich.markup import escape as _escape
+    console.print(
+        f"[bold]Total: {total_count}[/bold] | [green]Passed: {passed_count}[/green]"
+        f" | [red]Failed: {failed_count}[/red]"
+        f" | [yellow]Errored: {errored_count}[/yellow]"
+    )
+    console.print(f"Run report written to: [cyan]{_escape(str(report_file))}[/cyan]")
     
     # Optional --compare checking
     compare_opt = session.config.getoption("--compare")
