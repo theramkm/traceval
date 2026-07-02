@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "traceval"
-version = "0.2.1"
+version = "0.2.2"
 description = "Trace-to-Eval Compiler"
 readme = "README.md"
 requires-python = ">=3.11"

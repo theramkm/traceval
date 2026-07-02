@@ -123,7 +123,7 @@ traceval Run Summary
 │ c_d3f3b631__case_007 │ c_d3f3b631 │  PASS   │          0.0 │
 │ c_e834c13c__case_008 │ c_e834c13c │  PASS   │          0.0 │
 └──────────────────────┴────────────┴─────────┴──────────────┘
-Total: 8 | Passed: 8 | Failed: 0
+Total: 8 | Passed: 8 | Failed: 0 | Errored: 0
 ```
 
 The target is an HTTP URL or a `module:function` callable. Checks cover `exact`, `contains_any`, `not_contains`, `regex`, `json_schema`, `tool_sequence`, `no_tool_loop`, and `judge`. Run reports land in `<evals_dir>/runs/` (override with `--runs-dir`); pass `--compare <previous report>` to print regressions and improvements between runs. The exit code is nonzero when any case fails.
@@ -174,7 +174,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: theramkm/traceval@v0.2.1
+      - uses: theramkm/traceval@v0.2.2
         with:
           evals-dir: evals/
           target: myapp.agent:invoke_agent   # or an HTTP URL

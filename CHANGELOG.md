@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2026-07-02
+
+### Fixed
+- A run in which zero cases execute (e.g. unresolvable target) now writes a self-describing run report with an `errors` section instead of writing nothing; `--json` never reports `null`. Added a single clear top-level error line on target-resolution failure. Added `make test` and CONTRIBUTING as the canonical dev commands. Reported via external review of a failed-target invocation.
+- Run report schema additions (existing fields unchanged): `summary.errored` counts cases that never executed due to setup/collection errors; top-level `errors` lists `{stage, detail}` entries for `target_resolution`, `collection`, and `setup` failures, with identical details deduplicated into one entry carrying a `count`; `results` is `[]` rather than absent when nothing executed. The terminal summary now shows `Errored: n`.
+
 ## [0.2.1] - 2026-07-02
 
 ### Added
