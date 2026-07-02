@@ -22,11 +22,41 @@ All trace adapters transform incoming logs into the `Trace` schema (`src/traceva
 
 ## 1. Generic format (`generic`)
 
-A line-by-line JSONL file where each line is a raw JSON string validating directly against our canonical `Trace` model.
+A line-by-line JSONL file where each line is a raw JSON string validating directly against our canonical `Trace` model. This is the format to convert to when your backend is not natively supported; the two examples below are complete and ingest as-is.
+
+### Required vs optional fields
+
+| Field | Required | Notes |
+| --- | --- | --- |
+| `trace_id` | yes | Unique string. |
+| `source` | yes | Free-form origin label, e.g. `"generic"`. |
+| `started_at` | yes | ISO 8601 datetime. |
+| `task_input` | yes | The user request that started the trace. |
+| `steps` | yes | May be `[]`. Each step needs `index` and `kind` (`llm`, `tool`, `retrieval`, `other`); `llm` steps need an `llm` object with `span_id` and `input_messages`, `tool` steps need a `tool` object with `span_id`, `name`, `arguments_json`. |
+| `ended_at` | no | Missing/`null` triggers the built-in timeout rule. |
+| `final_output` | no | `null`/empty triggers the empty-output rule. |
+| `metadata` | no | `dict[str, str]`. |
+| `schema_version`, `outcome` | no | `outcome` is filled by `traceval analyze`; supply it only to pre-label. |
+
+### Example: success trace (one llm step, one tool step)
+
+```json
+{"trace_id": "tr-ok-1", "source": "generic", "started_at": "2026-07-01T12:00:00Z", "ended_at": "2026-07-01T12:00:02Z", "task_input": "Where is order 88421?", "final_output": "Your order 88421 is in transit.", "steps": [{"index": 0, "kind": "llm", "llm": {"span_id": "s1", "model": "gpt-4o-mini", "input_messages": [{"role": "user", "content": "Where is order 88421?"}], "output_message": {"role": "assistant", "content": "Let me look that up."}}}, {"index": 1, "kind": "tool", "tool": {"span_id": "s2", "name": "order_lookup", "arguments_json": "{\"order_id\": \"88421\"}", "output": "status: in_transit", "latency_ms": 142.0}}]}
+```
+
+Annotations: `arguments_json` is a raw JSON *string* (never a parsed object), so nothing is lost in translation. `output_message`, `model`, token counts, and `latency_ms` are all optional.
+
+### Example: failure trace (tool step with `error` set)
+
+```json
+{"trace_id": "tr-fail-1", "source": "generic", "started_at": "2026-07-01T12:05:00Z", "ended_at": "2026-07-01T12:05:01Z", "task_input": "Refund order 88421", "final_output": "Error: refund service unavailable.", "steps": [{"index": 0, "kind": "tool", "tool": {"span_id": "s3", "name": "refund_api", "arguments_json": "{\"order_id\": \"88421\"}", "output": null, "error": "HTTP 503 Service Unavailable"}}]}
+```
+
+A non-null `tool.error` makes the built-in `R_TOOL_ERROR` rule label the trace `tool_error`, which is what routes it into a failure cluster and, with `--include-failures`, into a regression case.
 
 ### Assumptions & Heuristics
-- Direct structural validation.
-- Lines failing to parse are logged as warnings and skipped.
+- Direct structural validation, no field inference.
+- Lines failing to parse are logged as warnings and skipped; the ingest never aborts.
 
 ---
 

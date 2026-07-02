@@ -89,6 +89,8 @@ Report written to analysis/report.html
 
 `analysis/report.html` is the single-file page shown in the screenshot above. Pass `--evals evals/` to overlay eval coverage per cluster, and `--rules my_rules.py` to add your own labeling rules. To view it over HTTP instead of `file://`, `traceval serve analysis` starts a stdlib localhost server and prints the report URL.
 
+Custom labeling rules, the redaction hook, and judge configuration are documented in [docs/extending.md](docs/extending.md).
+
 ### 3. Generate
 
 ```bash
@@ -126,7 +128,7 @@ traceval Run Summary
 Total: 8 | Passed: 8 | Failed: 0 | Errored: 0
 ```
 
-The target is an HTTP URL or a `module:function` callable. Checks cover `exact`, `contains_any`, `not_contains`, `regex`, `json_schema`, `tool_sequence`, `no_tool_loop`, and `judge`. Run reports land in `<evals_dir>/runs/` (override with `--runs-dir`); pass `--compare <previous report>` to print regressions and improvements between runs. The exit code is nonzero when any case fails.
+The target is an HTTP URL or a `module:function` callable; the exact request/response contract, with a copy-pasteable FastAPI example, is in [docs/targets.md](docs/targets.md). Checks cover `exact`, `contains_any`, `not_contains`, `regex`, `json_schema`, `tool_sequence`, `no_tool_loop`, and `judge`. Run reports land in `<evals_dir>/runs/` (override with `--runs-dir`); pass `--compare <previous report>` to print regressions and improvements between runs. The exit code is nonzero when any case fails.
 
 ### 5. Calibrate the judge
 
