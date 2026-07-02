@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3] - 2026-07-02
+
+### Fixed
+- **Cluster over-fragmentation**: digit-only tokens (order ids, amounts) are now collapsed to a `<num>` placeholder when building similarity shingles, so "Where is order 57978?" and "Where is order 12345?" cluster together. The 200-trace synthetic example now yields 8 clusters (4 intents + 4 failure modes) instead of 30+. Numeric tokens are also excluded from TF-IDF cluster naming and from case dedup shingles. Literal tokenization used for check inference is unchanged.
+
+### Changed
+- Cluster ids are content hashes of member trace ids, so existing cluster ids and rubric filenames will change after upgrading; regenerate suites with `traceval generate`.
+
 ## [0.1.2] - 2026-07-02
 
 ### Fixed

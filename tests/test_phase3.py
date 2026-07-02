@@ -141,3 +141,33 @@ def test_cli_analyze(tmp_path):
     assert "Outcomes:" in result.stdout
     assert "Clusters:" in result.stdout
     assert (analysis_dir / "report.json").exists()
+
+
+def test_synthetic_clusters_not_fragmented(tmp_path):
+    # 200 traces from ~5 underlying intents (randomized order ids/amounts)
+    # must land near the true intent count, not one cluster per order id.
+    from traceval.analyze.cluster import JaccardClusterer
+    from traceval.analyze.outcomes import label_trace
+
+    synthetic = Path(__file__).parent.parent / "examples" / "synthetic_traces.jsonl"
+    db_path = tmp_path / "synthetic.db"
+    store = TraceStore(db_path)
+    ingest_file(synthetic, store, format_name="generic")
+    traces = list(store.list_traces())
+    store.close()
+
+    for t in traces:
+        if not t.outcome:
+            t.outcome = label_trace(t)
+
+    clusters = JaccardClusterer().cluster(traces)
+    assert 5 <= len(clusters) <= 10, f"got {len(clusters)} clusters"
+
+    # All order-success traces share one cluster despite distinct order ids
+    order_ids = {
+        t.trace_id for t in traces if t.task_input.startswith("Where is order")
+    }
+    assert order_ids
+    containing = [c for c in clusters if set(c.trace_ids) & order_ids]
+    assert len(containing) == 1
+    assert order_ids <= set(containing[0].trace_ids)

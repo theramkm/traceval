@@ -82,6 +82,20 @@ def tokenize(text: str) -> list[str]:
     return [w for w in words if w not in STOPWORDS]
 
 
+NUM_TOKEN = "<num>"
+
+
+def normalize_numeric_tokens(tokens: list[str]) -> list[str]:
+    """Collapse digit-only tokens (ids, amounts) to a single placeholder.
+
+    Applied only where similarity shingles are built: "Where is order 57978?"
+    and "Where is order 12345?" express the same intent and must not seed
+    separate clusters. NOT applied in generic tokenize(), where literal
+    tokens matter (e.g. contains_any check inference).
+    """
+    return [NUM_TOKEN if t.isdigit() else t for t in tokens]
+
+
 def get_ngrams(tokens: list[str], max_n: int = 3) -> set[tuple[str, ...]]:
     ngrams: set[tuple[str, ...]] = set()
     n_tokens = len(tokens)
@@ -125,7 +139,7 @@ class JaccardClusterer:
             cluster_ngrams: list[set[tuple[str, ...]]] = []
 
             for trace in sorted_traces:
-                tokens = tokenize(trace.task_input)
+                tokens = normalize_numeric_tokens(tokenize(trace.task_input))
                 ngrams = get_ngrams(tokens)
 
                 matched_idx = -1
@@ -157,9 +171,10 @@ class JaccardClusterer:
         all_terms: set[str] = set()
 
         for _sig, group in raw_clusters:
-            terms = []
+            terms: list[str] = []
             for t in group:
-                terms.extend(tokenize(t.task_input))
+                # Numeric tokens are cluster-fragmentation noise, not names
+                terms.extend(tok for tok in tokenize(t.task_input) if not tok.isdigit())
             counter = Counter(terms)
             cluster_term_docs.append(counter)
             for term in counter:

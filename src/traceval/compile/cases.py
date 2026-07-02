@@ -4,7 +4,12 @@ import re
 from collections.abc import Callable
 from typing import Any
 
-from traceval.analyze.cluster import Cluster, get_ngrams, tokenize
+from traceval.analyze.cluster import (
+    Cluster,
+    get_ngrams,
+    normalize_numeric_tokens,
+    tokenize,
+)
 from traceval.model import Trace
 
 # Standard regexes for PII
@@ -184,10 +189,12 @@ def select_and_redact_cases(
         # Deduplicate traces in the cluster (near-identical task_input Jaccard >= 0.85)
         unique_traces: list[Trace] = []
         for t in cluster_traces:
-            t_ngrams = get_ngrams(tokenize(t.task_input))
+            t_ngrams = get_ngrams(normalize_numeric_tokens(tokenize(t.task_input)))
             is_dup = False
             for ut in unique_traces:
-                ut_ngrams = get_ngrams(tokenize(ut.task_input))
+                ut_ngrams = get_ngrams(
+                    normalize_numeric_tokens(tokenize(ut.task_input))
+                )
                 if not t_ngrams or not ut_ngrams:
                     sim = 0.0
                 else:
