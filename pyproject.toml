@@ -4,12 +4,12 @@ build-backend = "hatchling.build"
 
 [project]
 name = "traceval"
-version = "0.2.4"
+version = "0.2.5"
 description = "Compile production LLM-agent traces (OTel, Langfuse, LangSmith) into runnable pytest eval suites with regression detection and judge calibration."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
-authors = [{ name = "Ram", email = "rkm1415@gmail.com" }]
+authors = [{ name = "Ram", email = "theram.km@gmail.com" }]
 keywords = [
     "llm",
     "evals",
