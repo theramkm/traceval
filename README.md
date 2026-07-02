@@ -87,7 +87,7 @@ Top failure cluster: "refund stripe -> stripe_lookup -> (tool_error)" (30 traces
 Report written to analysis/report.html
 ```
 
-`analysis/report.html` is the single-file page shown in the screenshot above. Pass `--evals evals/` to overlay eval coverage per cluster, and `--rules my_rules.py` to add your own labeling rules.
+`analysis/report.html` is the single-file page shown in the screenshot above. Pass `--evals evals/` to overlay eval coverage per cluster, and `--rules my_rules.py` to add your own labeling rules. To view it over HTTP instead of `file://`, `traceval serve analysis` starts a stdlib localhost server and prints the report URL.
 
 ### 3. Generate
 

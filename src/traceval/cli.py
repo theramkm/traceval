@@ -260,6 +260,40 @@ def run(
     raise typer.Exit(code=exit_code)
 
 
+def _report_server(directory: Path, port: int):  # type: ignore[no-untyped-def]
+    import functools
+    from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+
+    handler = functools.partial(SimpleHTTPRequestHandler, directory=str(directory))
+    return ThreadingHTTPServer(("127.0.0.1", port), handler)
+
+
+@app.command()
+def serve(
+    directory: str = typer.Argument("analysis", help="Report directory to serve"),
+    port: int = typer.Option(0, help="Port to bind (0 picks a free one)"),
+) -> None:
+    """Serve a report directory on localhost so report.html loads correctly.
+
+    A thin wrapper over the stdlib http.server, nothing more: no
+    dashboard, no watcher, no hosted anything.
+    """
+    serve_dir = Path(directory)
+    if not serve_dir.is_dir():
+        typer.echo(f"Error: {directory} is not a directory.", err=True)
+        raise typer.Exit(1)
+
+    with _report_server(serve_dir, port) as httpd:
+        bound_port = httpd.server_address[1]
+        page = "report.html" if (serve_dir / "report.html").exists() else ""
+        typer.echo(f"Serving {serve_dir} at http://127.0.0.1:{bound_port}/{page}")
+        typer.echo("Press Ctrl+C to stop.")
+        try:
+            httpd.serve_forever()
+        except KeyboardInterrupt:
+            pass
+
+
 @app.command()
 def demo(
     output: str = typer.Option(
