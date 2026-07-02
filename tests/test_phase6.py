@@ -93,10 +93,14 @@ def test_scorers():
         judge, "rubric", "input", "output with input keyword", "reference"
     ).passed
 
-    # 7. Not contains (inverted): fails when any forbidden value appears
+    # 7. Not contains (inverted): fails when any forbidden value appears.
+    # Matching is word-boundary based, not substring: "errors" != "error".
     assert score_not_contains("Refund processed via Stripe.", ["error", "loop"]).passed
     assert not score_not_contains("Error: service unavailable", ["error"]).passed
     assert score_not_contains("anything", []).passed
+    assert score_not_contains("no errors found", ["error"]).passed
+    assert not score_not_contains("an error occurred", ["error"]).passed
+    assert not score_not_contains("ERROR!", ["error"]).passed
 
     # 8. No tool loop: fails on >= max_repeats consecutive identical calls
     assert not score_no_tool_loop(["a", "a", "a"], max_repeats=3).passed

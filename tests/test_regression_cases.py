@@ -108,3 +108,105 @@ def test_golden_cases_unchanged(tmp_path):
     assert "contains_any" in checks
     assert checks["tool_sequence"]["tools"] == ["order_lookup"]
     assert case["reference_output"]
+
+
+def _trace(trace_id, task_input, final_output, label):
+    from traceval.model import Outcome, Trace
+
+    return Trace(
+        trace_id=trace_id,
+        source="generic",
+        started_at="2026-07-01T12:00:00Z",
+        task_input=task_input,
+        final_output=final_output,
+        steps=[],
+        outcome=Outcome(
+            label=label, reason="test", rule_id="R_TEST", labeled_by="rule"
+        ),
+    )
+
+
+def _cluster(cluster_id, traces):
+    from traceval.analyze.cluster import Cluster
+
+    return Cluster(
+        id=cluster_id,
+        name=cluster_id,
+        trace_ids=[t.trace_id for t in traces],
+        tool_signature="",
+        top_terms=[],
+    )
+
+
+def test_signature_excludes_tokens_common_in_success_traces():
+    from traceval.compile.cases import select_and_redact_cases
+
+    # "service" appears in half the same-cluster successes (>= 10%), so it
+    # must not be forbidden; "exploded" appears in none, so it must be.
+    successes = [
+        _trace(
+            "s-1", "check account alpha", "Your service request is done.", "success"
+        ),
+        _trace(
+            "s-2", "check account beta", "All finished, have a nice day.", "success"
+        ),
+    ]
+    failure = _trace(
+        "f-1", "check account gamma", "The service exploded badly.", "tool_error"
+    )
+    cluster = _cluster("c_test", [*successes, failure])
+
+    cases = select_and_redact_cases(
+        [cluster], [*successes, failure], include_failures=True
+    )
+    regression = next(c for c in cases if c["kind"] == "regression")
+    not_contains = next(
+        chk for chk in regression["expected"]["checks"] if chk["type"] == "not_contains"
+    )
+    assert "exploded" in not_contains["values"]
+    assert "service" not in not_contains["values"]
+
+
+def test_signature_falls_back_to_db_successes():
+    from traceval.compile.cases import select_and_redact_cases
+
+    # The failure cluster has no successes; distinctiveness must be computed
+    # against all success traces in the db.
+    db_success = _trace("s-1", "lookup thing", "The gateway responded fine.", "success")
+    failure = _trace("f-1", "other request", "The gateway crashed hard.", "tool_error")
+    cases = select_and_redact_cases(
+        [_cluster("c_fail", [failure]), _cluster("c_ok", [db_success])],
+        [db_success, failure],
+        include_failures=True,
+    )
+    regression = next(c for c in cases if c["kind"] == "regression")
+    not_contains = next(
+        chk for chk in regression["expected"]["checks"] if chk["type"] == "not_contains"
+    )
+    # "gateway" is in the db success output -> excluded; "crashed" is not
+    assert "crashed" in not_contains["values"]
+    assert "gateway" not in not_contains["values"]
+
+
+def test_no_not_contains_when_no_token_survives():
+    from traceval.compile.cases import select_and_redact_cases
+
+    # Every failure-output token is either echoed from the input, too short,
+    # or common in success outputs -> the not_contains check must be omitted
+    # entirely, never emitted with an empty/junk list.
+    success = _trace("s-1", "ping", "Request completed without incident.", "success")
+    failure = _trace(
+        "f-1",
+        "request completed incident",
+        "Request completed incident. OK",
+        "bad_output",
+    )
+    cases = select_and_redact_cases(
+        [_cluster("c_f", [failure]), _cluster("c_s", [success])],
+        [success, failure],
+        include_failures=True,
+    )
+    regression = next(c for c in cases if c["kind"] == "regression")
+    check_types = [chk["type"] for chk in regression["expected"]["checks"]]
+    assert "not_contains" not in check_types
+    assert "judge" in check_types

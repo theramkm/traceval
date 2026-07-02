@@ -50,10 +50,15 @@ def score_contains_any(output: str, values: list[str]) -> ScoreResult:
 
 
 def score_not_contains(output: str, values: list[str]) -> ScoreResult:
+    """Fail if any forbidden value appears in the output.
+
+    Matching is word-boundary based (regex ``\\b...\\b``, case-insensitive),
+    not raw substring: forbidden value "error" matches "an error occurred"
+    but does NOT match "no errors found".
+    """
     matched = []
-    output_lower = output.lower()
     for val in values:
-        if val.lower() in output_lower:
+        if val and re.search(rf"\b{re.escape(val)}\b", output, re.IGNORECASE):
             matched.append(val)
     passed = len(matched) == 0
     return ScoreResult(

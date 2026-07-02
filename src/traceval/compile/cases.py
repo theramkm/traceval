@@ -123,16 +123,38 @@ def _build_golden_checks(trace: Trace, cluster_id: str) -> list[dict[str, Any]]:
     return checks
 
 
-def _error_signature_tokens(final_output: str, task_input: str) -> list[str]:
+# A token is "distinctive" of a failure only if success traces rarely say it
+SUCCESS_FREQUENCY_CEILING = 0.10
+
+
+def _error_signature_tokens(
+    final_output: str,
+    task_input: str,
+    success_outputs: list[str],
+) -> list[str]:
     """Tokens characteristic of a failure output, for not_contains checks.
 
-    Tokens that also appear in the task input are excluded (a healthy answer
-    naturally echoes the question), as are short generic words.
+    A token qualifies only if it is distinctive of the failure: excluded if
+    it also appears in the task input (a healthy answer naturally echoes the
+    question), if it is a short generic word, or if it appears in >= 10% of
+    the given success outputs (generic vocabulary like "service" that
+    healthy replies also use must never be forbidden).
     """
     input_tokens = set(tokenize(task_input))
+    success_token_sets = [set(tokenize(out)) for out in success_outputs if out]
+    n_success = len(success_token_sets)
+
+    def common_in_success(token: str) -> bool:
+        if not n_success:
+            return False
+        hits = sum(1 for tokens in success_token_sets if token in tokens)
+        return hits / n_success >= SUCCESS_FREQUENCY_CEILING
+
     signature: list[str] = []
     for token in tokenize(final_output):
         if len(token) < 4 or token in input_tokens or token in signature:
+            continue
+        if common_in_success(token):
             continue
         signature.append(token)
         if len(signature) == 4:
@@ -140,19 +162,28 @@ def _error_signature_tokens(final_output: str, task_input: str) -> list[str]:
     return signature
 
 
-def _build_regression_checks(trace: Trace, cluster_id: str) -> list[dict[str, Any]]:
+def _build_regression_checks(
+    trace: Trace,
+    cluster_id: str,
+    success_outputs: list[str],
+) -> list[dict[str, Any]]:
     """Inverted checks: the agent must NOT reproduce the recorded failure.
 
     Nothing from a failure trace is asserted as a positive expectation --
     regression cases mean "the agent must now not fail this way", so the
     failure's output tokens become forbidden and its loop becomes a bound.
+    If no distinctive token survives the filters, the not_contains check is
+    omitted entirely (never an empty or junk forbidden list) and the
+    label-specific checks plus the judge carry the case.
     """
     checks: list[dict[str, Any]] = []
     label = trace.outcome.label if trace.outcome else "unknown"
     final_out = trace.final_output or ""
 
     if final_out.strip():
-        signature = _error_signature_tokens(final_out, trace.task_input)
+        signature = _error_signature_tokens(
+            final_out, trace.task_input, success_outputs
+        )
         if signature:
             checks.append({"type": "not_contains", "values": signature})
     else:
@@ -181,10 +212,24 @@ def select_and_redact_cases(
     traces_by_id = {t.trace_id: t for t in traces}
     selected_cases: list[dict[str, Any]] = []
 
+    # Distinctiveness reference for failure-signature tokens: prefer success
+    # outputs from the same cluster, fall back to all successes in the db.
+    db_success_outputs = [
+        t.final_output or ""
+        for t in traces
+        if t.outcome and t.outcome.label == "success"
+    ]
+
     for cluster in clusters:
         cluster_traces = [
             traces_by_id[tid] for tid in cluster.trace_ids if tid in traces_by_id
         ]
+        cluster_success_outputs = [
+            t.final_output or ""
+            for t in cluster_traces
+            if t.outcome and t.outcome.label == "success"
+        ]
+        success_outputs = cluster_success_outputs or db_success_outputs
 
         # Deduplicate traces in the cluster (near-identical task_input Jaccard >= 0.85)
         unique_traces: list[Trace] = []
@@ -237,7 +282,7 @@ def select_and_redact_cases(
 
         for trace, kind in cases_to_generate:
             if kind == "regression":
-                checks = _build_regression_checks(trace, cluster.id)
+                checks = _build_regression_checks(trace, cluster.id, success_outputs)
                 # The failure output must not reach the judge as a golden
                 # reference; keep it in notes for human reviewers instead.
                 reference_output = ""
