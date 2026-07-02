@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install uv and set up Python
+      uses: astral-sh/setup-uv@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+        enable-cache: true
+
+    - name: Run Ruff Check
+      run: uv run ruff check src/ tests/ examples/
+
+    - name: Run Ruff Format Check
+      run: uv run ruff format --check src/ tests/ examples/
+
+    - name: Run Mypy
+      run: uv run mypy src/
+
+    - name: Run Tests with Coverage
+      run: uv run pytest --cov=src/traceval --cov-fail-under=85

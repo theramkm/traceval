@@ -1,0 +1,79 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "traceval"
+version = "0.1.0"
+description = "Trace-to-Eval Compiler"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+    "pydantic>=2.0.0",
+    "typer>=0.9.0",
+    "rich>=13.0.0",
+    "jinja2>=3.1.0",
+    "httpx>=0.24.0",
+    "jsonschema>=4.17.0",
+    "pyyaml>=6.0.0",
+]
+
+[project.scripts]
+traceval = "traceval.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/traceval"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "C4", "RUF"]
+ignore = ["N802"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = false
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = [
+    "traceval.model.*",
+    "traceval.run.*",
+    "traceval.compile.*"
+]
+strict = true
+
+[[tool.mypy.overrides]]
+module = [
+    "yaml.*",
+    "pytest.*",
+    "jsonschema.*"
+]
+ignore_missing_imports = true
+
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.0.0",
+    "ruff>=0.2.0",
+    "mypy>=1.8.0",
+    "fastapi>=0.110.0",
+    "uvicorn>=0.28.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "--tb=short"
+
+[tool.coverage.run]
+omit = [
+    "src/traceval/compile/templates/*",
+]
+
