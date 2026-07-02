@@ -8,6 +8,8 @@ cd traceval
 uv sync          # installs the package and dev dependencies (same as CI)
 ```
 
+No uv? `pip install -e . --group dev` does the same (needs pip >= 25.1 for dependency-group support).
+
 ## Development loop
 
 ```bash

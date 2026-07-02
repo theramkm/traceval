@@ -61,9 +61,12 @@ def run_agent(payload: AgentInput) -> dict:
 ```
 
 ```bash
+pip install fastapi uvicorn   # neither ships with traceval
 uvicorn my_agent:app --port 8000 &
 traceval run evals/ --target http://127.0.0.1:8000/agent --judge fake
 ```
+
+This echo agent will fail the golden cases by design; it demonstrates the wiring, not a passing suite. Failures with your real answers substituted in are the runner working, not a broken setup.
 
 ## Callable target
 
