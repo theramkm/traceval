@@ -183,6 +183,11 @@ jobs:
 
 Inputs: `evals-dir` and `target` (required); `judge`, `compare`, `only`, `runs-dir`, `traceval-version`, `python-version` (optional). For a real LLM judge, set `judge: openai` and pass `OPENAI_API_KEY` (or `GEMINI_API_KEY`) via `env:` from your repository secrets.
 
+## Development
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup.
+Run the test suite with `make test` and the full gate set with `make lint`.
+
 ## Honest Limitations
 
 * **Side-Effect Free**: traceval assertions evaluate input/output matches. It does not attempt to replay side effects (e.g., updating database records) on mock tools.
