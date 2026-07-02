@@ -5,10 +5,36 @@ build-backend = "hatchling.build"
 [project]
 name = "traceval"
 version = "0.2.3"
-description = "Trace-to-Eval Compiler"
+description = "Compile production LLM-agent traces (OTel, Langfuse, LangSmith) into runnable pytest eval suites with regression detection and judge calibration."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
+authors = [{ name = "Ram", email = "rkm1415@gmail.com" }]
+keywords = [
+    "llm",
+    "evals",
+    "evaluation",
+    "agents",
+    "tracing",
+    "opentelemetry",
+    "langfuse",
+    "langsmith",
+    "testing",
+    "llm-as-a-judge",
+    "regression-testing",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Testing",
+    "Topic :: Software Development :: Quality Assurance",
+    "Environment :: Console",
+    "Typing :: Typed",
+]
 dependencies = [
     "pydantic>=2.0.0",
     "typer>=0.9.0",
@@ -21,6 +47,13 @@ dependencies = [
     # first-class command, not a dev-only concern.
     "pytest>=8.0.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/theramkm/traceval"
+Repository = "https://github.com/theramkm/traceval"
+Documentation = "https://github.com/theramkm/traceval/tree/main/docs"
+Changelog = "https://github.com/theramkm/traceval/blob/main/CHANGELOG.md"
+Issues = "https://github.com/theramkm/traceval/issues"
 
 [project.scripts]
 traceval = "traceval.cli:app"
@@ -67,6 +100,7 @@ dev = [
     "mypy>=1.8.0",
     "fastapi>=0.110.0",
     "uvicorn>=0.28.0",
+    "readme-renderer[md]>=44.0",
 ]
 
 [tool.pytest.ini_options]
