@@ -34,29 +34,50 @@ jobs:
     - name: Run Tests with Coverage
       run: uv run pytest --cov=src/traceval --cov-fail-under=85
 
-  tag:
+  tag-and-release:
     needs: test
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
     steps:
     - uses: actions/checkout@v4
       with:
         fetch-depth: 0
 
-    - name: Create and push tag
+    - name: Install uv and set up Python
+      uses: astral-sh/setup-uv@v5
+      with:
+        python-version: "3.12"
+        enable-cache: true
+
+    - name: Check version and build
+      id: check-ver
       run: |
         VERSION=$(grep -m 1 'version =' pyproject.toml | tr -d '"' | tr -d "'" | awk '{print $NF}')
         TAG="v$VERSION"
         
         if git rev-parse "$TAG" >/dev/null 2>&1; then
-          echo "Tag $TAG already exists, skipping."
+          echo "Tag $TAG already exists, skipping release."
+          echo "publish=false" >> $GITHUB_OUTPUT
         else
-          echo "Creating tag $TAG..."
+          echo "New version detected. Building and releasing $TAG..."
+          uv build
+          
+          # Configure Git and push tag
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag "$TAG"
           git push origin "$TAG"
+          
+          echo "publish=true" >> $GITHUB_OUTPUT
         fi
+
+    - name: Publish to PyPI
+      if: steps.check-ver.outputs.publish == 'true'
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        skip-existing: true
+
 
