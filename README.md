@@ -9,7 +9,7 @@
 
 ***"Your traces already know how your agent fails. traceval turns them into the test suite you never wrote."***
 
-Teams running LLM agents in production have observability traces, but only a fraction maintain robust evals. The raw material for great tests — thousands of real production traces, including edge cases and errors — sits unused because converting them into regression suites is manual and tedious.
+Teams running LLM agents in production have observability traces, but only a fraction maintain robust evals. The raw material for great tests, including thousands of real production traces with edge cases and errors, sits unused because converting them into regression suites is manual and tedious.
 
 **traceval** automates this by ingesting agent traces from standard sources, normalizing them into a canonical Pydantic model, analyzing outcomes/clustering task signatures, and **compiling them into a human-editable eval suite**: pytest files + YAML datasets + judge rubric scaffolds.
 
@@ -47,6 +47,22 @@ graph LR
 * 📝 **Clean Code Generation**: Compiles cases into editable YAML files, LLM-as-a-judge rubrics into Markdown checklist scaffolds, and pytest test runs into clean templates.
 * ⚡ **PII Redaction Safeguards**: Automatically scrubs emails, credit cards, phone numbers, and API tokens before writing test inputs.
 * 🛡️ **CI/CD Regression Diff**: Compares execution summaries and scores between runs using exit codes to catch agent failures before deploying.
+
+---
+
+## 📦 Installation
+
+Install `traceval` directly from PyPI:
+
+```bash
+pip install traceval
+```
+
+Or using `uv` for faster virtual environment setups:
+
+```bash
+uv pip install traceval
+```
 
 ---
 
