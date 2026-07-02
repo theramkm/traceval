@@ -46,38 +46,111 @@ def pytest_generate_tests(metafunc):
 
         metafunc.parametrize("eval_case", cases, ids=[c["id"] for c in cases])
 
-@pytest.fixture(scope="session")
-def target_runner(request):
-    target_opt = request.config.getoption("--target")
+# Target resolution runs ONCE per session so a broken target produces one
+# clear error line up front (and one errors entry in the run report),
+# never a wall of identical per-case tracebacks with no explanation.
+_target_probe = {}
+
+def _probe_target(config):
+    if _target_probe.get("done"):
+        return _target_probe
+    _target_probe["done"] = True
+
+    target_opt = config.getoption("--target")
     if not target_opt:
         config_path = Path(__file__).parent / "traceval.yaml"
         if config_path.exists():
             try:
                 with open(config_path, encoding="utf-8") as f:
-                    config = yaml.safe_load(f)
-                    target_opt = config.get("target", {}).get("default_url")
+                    cfg = yaml.safe_load(f)
+                    target_opt = cfg.get("target", {}).get("default_url")
             except Exception:
                 pass
+
     if not target_opt:
-        pytest.fail("No target specified. Use --target option or set in traceval.yaml.")
-    return resolve_target(target_opt)
+        detail = "No target specified. Use --target option or set in traceval.yaml."
+        _target_probe["error"] = detail
+        _record_error("target_resolution", detail)
+        return _target_probe
+
+    try:
+        _target_probe["target"] = resolve_target(target_opt)
+    except Exception as e:
+        detail = f"target '{target_opt}' could not be imported ({e}). Check the module path or URL."
+        _target_probe["error"] = detail
+        _record_error("target_resolution", detail)
+        return _target_probe
+
+    if target_opt.startswith(("http://", "https://")):
+        # First-contact reachability check; connection-level failures only.
+        # The resolved target is kept either way so cases still run.
+        import httpx
+        try:
+            httpx.get(target_opt, timeout=2.0)
+        except (httpx.ConnectError, httpx.InvalidURL, httpx.UnsupportedProtocol) as e:
+            detail = f"target '{target_opt}' is unreachable ({e}). Check the module path or URL."
+            _target_probe["error"] = detail
+            _record_error("target_resolution", detail)
+
+    return _target_probe
+
+def pytest_report_header(config):
+    probe = _probe_target(config)
+    if probe.get("error"):
+        return [f"ERROR: {probe['error']}"]
+    return []
+
+@pytest.fixture(scope="session")
+def target_runner(request):
+    probe = _probe_target(request.config)
+    if "target" not in probe:
+        pytest.fail(probe.get("error") or "Target resolution failed.")
+    return probe["target"]
 
 @pytest.fixture(scope="session")
 def judge_runner(request):
     judge_opt = request.config.getoption("--judge")
     return resolve_judge(judge_opt)
 
-# Accumulator for final report
+# Accumulators for final report
 _results_accumulator = []
+_errors_accumulator = []
+_errored_cases = [0]
+
+def _record_error(stage, detail):
+    # Deduplicate identical details into one entry with a count field
+    for entry in _errors_accumulator:
+        if entry["stage"] == stage and entry["detail"] == detail:
+            entry["count"] = entry.get("count", 1) + 1
+            return
+    _errors_accumulator.append({"stage": stage, "detail": detail})
+
+def pytest_collectreport(report):
+    if report.failed:
+        detail = str(report.longrepr).strip().splitlines()[-1]
+        _record_error("collection", detail)
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    outcome = yield
+    report = outcome.get_result()
+    if report.when == "setup" and report.failed:
+        # Case never executed (fixture/setup error)
+        _errored_cases[0] += 1
+        detail = getattr(getattr(report, "longrepr", None), "reprcrash", None)
+        detail = detail.message if detail else str(report.longrepr).strip().splitlines()[-1]
+        _record_error("setup", detail)
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_sessionstart(session):
     _results_accumulator.clear()
+    _errors_accumulator.clear()
+    _errored_cases[0] = 0
 
 def pytest_sessionfinish(session, exitstatus):
-    if not _results_accumulator:
-        return
-    
+    # ALWAYS write a run report, including when zero cases executed:
+    # catastrophic failure must produce a self-describing artifact,
+    # never silence.
     runs_opt = session.config.getoption("--runs-dir")
     if runs_opt:
         runs_dir = Path(runs_opt).resolve()
@@ -95,43 +168,48 @@ def pytest_sessionfinish(session, exitstatus):
     
     passed_count = sum(1 for r in _results_accumulator if r["passed"])
     failed_count = len(_results_accumulator) - passed_count
-    
+    errored_count = _errored_cases[0]
+    total_count = len(_results_accumulator) + errored_count
+
     report = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "summary": {
-            "total": len(_results_accumulator),
+            "total": total_count,
             "passed": passed_count,
             "failed": failed_count,
+            "errored": errored_count,
         },
+        "errors": _errors_accumulator,
         "results": _results_accumulator
     }
-    
+
     report_file.write_text(json.dumps(report, indent=2), encoding="utf-8")
-    
+
     # Rich Table Terminal output
     from rich.console import Console
     from rich.table import Table
-    
+
     console = Console()
     console.print("\n[bold purple]traceval Run Summary[/bold purple]")
-    
-    table = Table(show_header=True, header_style="bold blue")
-    table.add_column("Case ID", style="cyan")
-    table.add_column("Cluster", style="magenta")
-    table.add_column("Outcome", justify="center")
-    table.add_column("Latency (ms)", justify="right")
-    
-    for r in _results_accumulator:
-        outcome_str = "[bold green]PASS[/bold green]" if r["passed"] else "[bold red]FAIL[/bold red]"
-        table.add_row(
-            r["case_id"],
-            r["cluster"],
-            outcome_str,
-            f"{r['latency_ms']:.1f}"
-        )
-    
-    console.print(table)
-    console.print(f"Total: {len(_results_accumulator)} | Passed: {passed_count} | Failed: {failed_count}")
+
+    if _results_accumulator:
+        table = Table(show_header=True, header_style="bold blue")
+        table.add_column("Case ID", style="cyan")
+        table.add_column("Cluster", style="magenta")
+        table.add_column("Outcome", justify="center")
+        table.add_column("Latency (ms)", justify="right")
+
+        for r in _results_accumulator:
+            outcome_str = "[bold green]PASS[/bold green]" if r["passed"] else "[bold red]FAIL[/bold red]"
+            table.add_row(
+                r["case_id"],
+                r["cluster"],
+                outcome_str,
+                f"{r['latency_ms']:.1f}"
+            )
+
+        console.print(table)
+    console.print(f"Total: {total_count} | Passed: {passed_count} | Failed: {failed_count} | Errored: {errored_count}")
     console.print(f"Run report written to: {report_file}")
     
     # Optional --compare checking
