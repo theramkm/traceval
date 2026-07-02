@@ -116,14 +116,14 @@ traceval Run Summary
 ┏━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━━┓
 ┃ Case ID              ┃ Cluster    ┃ Outcome ┃ Latency (ms) ┃
 ┡━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━━━━┩
-│ c_0c422a7a__case_001 │ c_0c422a7a │  PASS   │          0.0 │
-│ c_1e5d0942__case_002 │ c_1e5d0942 │  PASS   │          0.0 │
-│ c_2c881177__case_003 │ c_2c881177 │  PASS   │          0.0 │
-│ c_361535b0__case_004 │ c_361535b0 │  PASS   │          0.0 │
-│ c_9a8a4644__case_005 │ c_9a8a4644 │  PASS   │          0.0 │
-│ c_d30af83a__case_006 │ c_d30af83a │  PASS   │          0.0 │
-│ c_d3f3b631__case_007 │ c_d3f3b631 │  PASS   │          0.0 │
-│ c_e834c13c__case_008 │ c_e834c13c │  PASS   │          0.0 │
+│ c_0c422a7a__case_001 │ c_0c422a7a │  PASS   │         <0.1 │
+│ c_1e5d0942__case_002 │ c_1e5d0942 │  PASS   │         <0.1 │
+│ c_2c881177__case_003 │ c_2c881177 │  PASS   │         <0.1 │
+│ c_361535b0__case_004 │ c_361535b0 │  PASS   │         <0.1 │
+│ c_9a8a4644__case_005 │ c_9a8a4644 │  PASS   │         <0.1 │
+│ c_d30af83a__case_006 │ c_d30af83a │  PASS   │         <0.1 │
+│ c_d3f3b631__case_007 │ c_d3f3b631 │  PASS   │         <0.1 │
+│ c_e834c13c__case_008 │ c_e834c13c │  PASS   │         <0.1 │
 └──────────────────────┴────────────┴─────────┴──────────────┘
 Total: 8 | Passed: 8 | Failed: 0 | Errored: 0
 ```
@@ -176,7 +176,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: theramkm/traceval@v0.2.2
+      - uses: theramkm/traceval@v0.2.3
         with:
           evals-dir: evals/
           target: myapp.agent:invoke_agent   # or an HTTP URL

@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.3] - 2026-07-02
+
+### Fixed
+- **Adapter tool detection no longer depends on demo tool names.** The Langfuse and OTel adapters matched span names against the demo agent's tool vocabulary (`order_lookup`, `stripe_lookup`, `kb_search`), so real exports with any other tool names silently classified tool spans as `other`, breaking `tool_error` labeling, `tool_sequence`/`no_tool_loop` generation, and cluster signatures. Langfuse SPANs now classify via `metadata.tool`, user-supplied `--tool-span-names` globs, or a documented input+output/error heuristic; OTel uses GenAI semantic-convention attributes with attribute-only fallbacks. Detection is proven vocabulary-free by new `create_ticket` fixtures. Surfaced by external review, found by reading; a real export would have found it in seconds.
+- Sub-millisecond latencies render as `<0.1` in the run summary instead of `0.0`.
+
+### Added
+- `traceval ingest --tool-span-names`: comma-separated name globs marking spans as tool calls (replaces the Langfuse heuristic, adds an OTel fallback).
+- `docs/targets.md`: the exact run-against-my-agent contract (HTTP request/response shape, callable return shapes, timeout and failure behavior) with an executable FastAPI example.
+- `docs/extending.md`: custom outcome rules, redaction hook, judge configuration as implemented, and an honest `traceval.yaml` reference.
+- `docs/formats.md`: complete annotated generic-format examples (success and tool-failure lines that ingest as-is) and a required-vs-optional field table; Langfuse/OTel sections rewritten to match the new heuristics.
+
 ## [0.2.2] - 2026-07-02
 
 ### Fixed
