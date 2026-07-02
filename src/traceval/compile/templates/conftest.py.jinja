@@ -113,7 +113,7 @@ def pytest_sessionfinish(session, exitstatus):
     from rich.table import Table
     
     console = Console()
-    console.print("\\n[bold purple]traceval Run Summary[/bold purple]")
+    console.print("\n[bold purple]traceval Run Summary[/bold purple]")
     
     table = Table(show_header=True, header_style="bold blue")
     table.add_column("Case ID", style="cyan")
@@ -155,12 +155,12 @@ def pytest_sessionfinish(session, exitstatus):
                             improvements.append(curr["case_id"])
                 
                 if regressions:
-                    console.print("\\n[bold red]⚠️ REGRESSIONS DETECTED:[/bold red]")
+                    console.print("\n[bold red]REGRESSIONS DETECTED:[/bold red]")
                     for r in regressions:
                         console.print(f"  - {r}")
                 if improvements:
-                    console.print("\\n[bold green]🚀 IMPROVEMENTS DETECTED:[/bold green]")
+                    console.print("\n[bold green]IMPROVEMENTS DETECTED:[/bold green]")
                     for imp in improvements:
                         console.print(f"  - {imp}")
             except Exception as e:
-                console.print(f"\\nFailed to run regression comparison: {e}")
+                console.print(f"\nFailed to run regression comparison: {e}")

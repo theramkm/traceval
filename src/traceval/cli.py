@@ -478,9 +478,9 @@ def calibrate(
     )
     if stats["flagged_clusters"]:
         console.print(
-            f"[bold red]⚠️ Judge unreliable (< {min_agreement:.0%} agreement) for "
-            f"clusters: {', '.join(stats['flagged_clusters'])}. Review their "
-            "rubrics before trusting automated scores.[/bold red]"
+            f"[bold red]WARNING: Judge unreliable (< {min_agreement:.0%} "
+            f"agreement) for clusters: {', '.join(stats['flagged_clusters'])}. "
+            "Review their rubrics before trusting automated scores.[/bold red]"
         )
     else:
         console.print(

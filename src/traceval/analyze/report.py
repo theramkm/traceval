@@ -296,7 +296,7 @@ REPORT_TEMPLATE = """<!DOCTYPE html>
                 <p>Traffic Analysis & Evaluation Suite Coverage Report</p>
             </div>
             <div>
-                <span class="badge badge-info">v0.1.0</span>
+                <span class="badge badge-info">v{{ version }}</span>
             </div>
         </header>
 
@@ -464,6 +464,8 @@ def render_report(
     )
 
     # Create HTML
+    from traceval import __version__
+
     env = jinja2.Environment(autoescape=True)
     template = env.from_string(REPORT_TEMPLATE)
     html_content = template.render(
@@ -472,6 +474,7 @@ def render_report(
         covered_clusters_pct=covered_clusters_pct,
         clusters=clusters,
         alerts=alerts,
+        version=__version__,
     )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
