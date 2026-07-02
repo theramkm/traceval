@@ -147,6 +147,12 @@ traceval run <evals_dir/> --target <url|module:function> [--judge fake|openai] [
 
 *Case kinds: `golden` cases assert the recorded successful behavior; `regression` cases (from failure traces) assert the failure does **not** recur — forbidden error tokens, no tool loops, non-empty output. A regression case passes for any agent that avoids that failure mode; goldens carry general bug detection.*
 
+### Judge Calibration
+```bash
+traceval calibrate <evals_dir>/runs/run_<ts>.json [--sample 20] [--seed 0] [--min-agreement 0.8] [-o calibration.json]
+```
+*An LLM judge is only as good as its agreement with human expertise. `calibrate` samples judge-scored results from a run report, presents each agent output for **blind** human pass/fail labeling in the terminal (judge verdicts stay hidden until the end to avoid anchoring), then reports judge-vs-human agreement overall and per cluster — including **false-pass** counts (judge approved, human rejected: the dangerous direction) — and flags clusters below the agreement threshold whose rubrics need review.*
+
 ---
 
 ## 🛡️ GitHub Action

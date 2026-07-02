@@ -169,5 +169,116 @@ def run(
     raise typer.Exit(code=exit_code)
 
 
+@app.command()
+def calibrate(
+    run_report: str,
+    sample: int = typer.Option(20, help="Number of judged cases to label"),
+    seed: int = typer.Option(0, help="Sampling seed (deterministic)"),
+    output: str = typer.Option(
+        "calibration.json", "-o", "--output", help="Calibration report output path"
+    ),
+    min_agreement: float = typer.Option(
+        0.8, help="Flag clusters whose judge-vs-human agreement falls below this"
+    ),
+) -> None:
+    """Validate the LLM judge against human labels on a sample of run results.
+
+    Presents sampled agent outputs for blind pass/fail labeling (judge
+    verdicts are hidden until the end), then reports judge-vs-human
+    agreement overall and per cluster.
+    """
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.table import Table
+
+    from traceval.run.calibrate import (
+        compute_agreement,
+        extract_judged_results,
+        sample_judged,
+    )
+
+    report_path = Path(run_report)
+    if not report_path.exists():
+        typer.echo(f"Run report not found: {run_report}", err=True)
+        raise typer.Exit(code=1)
+    with open(report_path, encoding="utf-8") as f:
+        report = json.load(f)
+
+    judged = extract_judged_results(report)
+    if not judged:
+        typer.echo(
+            "No judge-scored results with recorded outputs in this report. "
+            "Reports written before traceval 0.2.0 lack the input/output "
+            "fields calibrate needs: regenerate the suite (traceval generate) "
+            "and rerun (traceval run) first.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    picked = sample_judged(judged, sample, seed)
+
+    console = Console()
+    console.print(
+        f"\n[bold]Calibrating judge on {len(picked)} sampled case(s).[/bold] "
+        "Label each output pass/fail; judge verdicts stay hidden until the end.\n"
+    )
+
+    labeled = []
+    for idx, item in enumerate(picked, 1):
+        console.print(
+            Panel(
+                str(item["input"]),
+                title=f"[{idx}/{len(picked)}] {item['case_id']} -- input",
+                border_style="blue",
+            )
+        )
+        console.print(
+            Panel(
+                str(item["output"]) or "(empty output)",
+                title="agent output",
+                border_style="cyan",
+            )
+        )
+        human_passed = typer.confirm("Human verdict -- pass?")
+        labeled.append({**item, "human_passed": human_passed})
+
+    stats = compute_agreement(labeled, min_agreement=min_agreement)
+
+    table = Table(show_header=True, header_style="bold blue")
+    table.add_column("Cluster", style="magenta")
+    table.add_column("Labeled", justify="right")
+    table.add_column("Agreement", justify="right")
+    for cluster, cstats in sorted(stats["per_cluster"].items()):
+        pct = f"{cstats['agreement']:.0%}"
+        style = "red" if cluster in stats["flagged_clusters"] else "green"
+        table.add_row(cluster, str(cstats["total"]), f"[{style}]{pct}[/{style}]")
+
+    console.print("\n[bold purple]Judge Calibration Summary[/bold purple]")
+    console.print(table)
+    console.print(
+        f"Overall agreement: {stats['agreement']:.0%} on {stats['total']} case(s) | "
+        f"false-pass (judge OK, human not): {stats['false_pass']} | "
+        f"false-fail: {stats['false_fail']}"
+    )
+    if stats["flagged_clusters"]:
+        console.print(
+            f"[bold red]⚠️ Judge unreliable (< {min_agreement:.0%} agreement) for "
+            f"clusters: {', '.join(stats['flagged_clusters'])}. Review their "
+            "rubrics before trusting automated scores.[/bold red]"
+        )
+    else:
+        console.print(
+            f"[green]Judge agreement is at or above {min_agreement:.0%} for all "
+            "sampled clusters.[/green]"
+        )
+
+    out_path = Path(output)
+    out_path.write_text(
+        json.dumps({"stats": stats, "labels": labeled}, indent=2),
+        encoding="utf-8",
+    )
+    console.print(f"Calibration report written to: {out_path}")
+
+
 if __name__ == "__main__":
     app()

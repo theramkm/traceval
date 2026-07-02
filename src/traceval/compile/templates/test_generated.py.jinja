@@ -9,9 +9,12 @@ def test_case(eval_case, target_runner, judge_runner):
     _results_accumulator.append({
         "case_id": eval_case["id"],
         "cluster": eval_case["cluster"],
+        "kind": eval_case.get("kind"),
         "passed": result["passed"],
         "latency_ms": result["latency_ms"],
         "scores": result["scores"],
+        "input": eval_case["input"],
+        "output": result.get("output", ""),
     })
     
     assert result["passed"], f"Case {eval_case['id']} failed: {result['detail']}"

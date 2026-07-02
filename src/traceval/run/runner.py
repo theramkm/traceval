@@ -119,4 +119,7 @@ def run_single_case(
         "detail": "; ".join(failed_details) if failed_details else "All checks passed",
         "latency_ms": latency_ms,
         "scores": scores,
+        # The agent's raw output is kept for the run report so `traceval
+        # calibrate` can show it for human judge-vs-human comparison.
+        "output": output_text,
     }

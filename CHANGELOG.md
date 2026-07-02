@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-07-02
+
+### Added
+- **`traceval calibrate`**: validate the LLM judge against human labels. Samples judge-scored results from a run report (deterministic via `--seed`), presents each agent output for blind pass/fail labeling in the terminal (judge verdicts hidden until the end), then reports judge-vs-human agreement overall and per cluster with false-pass/false-fail counts, flagging clusters below `--min-agreement` (default 80%). Writes a `calibration.json` with stats and labels.
+
+### Changed
+- **Run report schema**: result items now include `input`, `output` (the agent's response), and `kind` (golden/regression), which calibrate requires. Reports written by older suites still load everywhere else; `calibrate` asks you to regenerate the suite when these fields are missing.
+
 ## [0.1.4] - 2026-07-02
 
 ### Added
