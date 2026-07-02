@@ -22,3 +22,6 @@ make all         # lint + test
 CI runs the same commands on Python 3.11, 3.12, and 3.13, plus a
 wheel-based demo smoke job, and enforces 85% coverage. Keep all of it
 green; add a test for every behavior change.
+
+The README demo GIF is regenerated with `make demo-gif` (requires vhs:
+`brew install vhs`), never hand-edited.

@@ -1,4 +1,4 @@
-.PHONY: test lint demo all
+.PHONY: test lint demo demo-gif all
 
 test:
 	uv run pytest -q
@@ -12,3 +12,7 @@ demo:
 	uv run traceval demo -o /tmp/traceval-demo --force
 
 all: lint test
+
+demo-gif:
+	@command -v vhs >/dev/null || { echo "vhs not found; install it with: brew install vhs"; exit 1; }
+	vhs docs/demo.tape
