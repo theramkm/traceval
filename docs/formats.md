@@ -140,6 +140,8 @@ Langfuse exports traces as JSON objects with nested lists of observations (of ty
 
 LangSmith exports represent hierarchical run hierarchies grouped by `trace_id`.
 
+`--tool-span-names` has no effect here; LangSmith's explicit `run_type` field makes the heuristic unnecessary.
+
 ### Mapping Translations
 
 | Canonical Field | LangSmith Path |
