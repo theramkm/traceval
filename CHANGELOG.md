@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.4] - 2026-07-02
+
+### Changed
+- **PyPI page**: real package metadata (selling one-line summary, project URLs, author, keywords, classifiers including `Typing :: Typed` backed by a `py.typed` marker in the wheel) and a README whose image and doc links are absolute URLs, so the PyPI page renders correctly (verified with readme-renderer).
+- **Unified CLI color scheme**: one shared console with a semantic palette (green passed, red failed, yellow errored/warnings, cyan paths, magenta clusters, bold counts and headings, bold-red errors on stderr) across ingest/analyze/generate/demo/serve/calibrate and the generated run summary. Styling auto-disables when the stream is not a TTY and honors `NO_COLOR`; `--json` output bypasses the console entirely and is byte-identical (pinned by tests).
+- Ingest shows a progress bar when stdout is a TTY and `--json` is not set; never in pipes or CI.
+
+### Added
+- `docs/demo.tape` (vhs script) and `make demo-gif` to record the demo GIF for the README; the embed ships commented-out until the GIF is generated and committed. The three doc papercuts from the last audit (LangSmith flag note, FastAPI example prerequisites, pip fallback in CONTRIBUTING) were verified already shipped on main after the v0.2.3 tag.
+
 ## [0.2.3] - 2026-07-02
 
 ### Fixed
