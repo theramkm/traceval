@@ -24,6 +24,9 @@ def ingest(
     path: str,
     format: str = typer.Option("auto", help="auto|otel|langfuse|langsmith|generic"),
     output: str = typer.Option("traces.db", "-o", help="SQLite database output path"),
+    json_output: bool = typer.Option(
+        False, "--json", help="Print a machine-readable JSON summary to stdout"
+    ),
 ) -> None:
     """Ingest trace logs into SQLite database."""
     db = TraceStore(output)
@@ -31,7 +34,19 @@ def ingest(
         ok_count, span_count, warn_count, log_file = ingest_file(
             Path(path), db, format_name=format
         )
-        if warn_count > 0:
+        if json_output:
+            typer.echo(
+                json.dumps(
+                    {
+                        "traces": ok_count,
+                        "spans": span_count,
+                        "warnings": warn_count,
+                        "log": str(log_file) if warn_count > 0 else None,
+                        "db": output,
+                    }
+                )
+            )
+        elif warn_count > 0:
             typer.echo(
                 f"Ingested {ok_count} traces ({span_count} spans). "
                 f"{warn_count} traces had warnings (see {log_file})."
@@ -48,11 +63,14 @@ def analyze(
     rules: str = typer.Option(None, help="Custom rules file.py"),
     evals: str = typer.Option(None, help="Existing evals/ directory to check coverage"),
     output: str = typer.Option("analysis/", "-o", help="Output analysis directory"),
+    json_output: bool = typer.Option(
+        False, "--json", help="Print a machine-readable JSON summary to stdout"
+    ),
 ) -> None:
     """Analyze ingested traces (labeling, clustering, coverage)."""
     db_p = Path(db_path)
     if not db_p.exists():
-        typer.echo(f"Error: database file {db_path} does not exist.")
+        typer.echo(f"Error: database file {db_path} does not exist.", err=True)
         raise typer.Exit(1)
 
     out_dir = Path(output)
@@ -66,6 +84,43 @@ def analyze(
     )
 
     total = summary["total_traces"]
+    clusters = summary["clusters"]
+
+    # Any cluster whose dominant outcome is not success is a failure cluster.
+    # Named with (label) suffix.
+    failure_clusters = [
+        c for c in clusters if "(" in c["name"] and "success" not in c["name"]
+    ]
+    top_fail = (
+        max(failure_clusters, key=lambda c: c["trace_count"])
+        if failure_clusters
+        else None
+    )
+
+    # Save json report
+    report_json_path = out_dir / "report.json"
+    report_json_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+
+    if json_output:
+        typer.echo(
+            json.dumps(
+                {
+                    "outcomes": {k: v / total for k, v in summary["outcomes"].items()}
+                    if total
+                    else {},
+                    "clusters": len(clusters),
+                    "top_failure_cluster": (
+                        {"name": top_fail["name"], "traces": top_fail["trace_count"]}
+                        if top_fail
+                        else None
+                    ),
+                    "report_html": str(out_dir / "report.html"),
+                    "report_json": str(report_json_path),
+                }
+            )
+        )
+        return
+
     if total == 0:
         typer.echo("No traces found to analyze.")
         return
@@ -78,24 +133,14 @@ def analyze(
     outcomes_str = " · ".join(outcomes_list)
     typer.echo(f"Outcomes: {outcomes_str}")
 
-    clusters = summary["clusters"]
     typer.echo(f"Clusters: {len(clusters)} task clusters found.")
 
-    # Any cluster whose dominant outcome is not success is a failure cluster.
-    # Named with (label) suffix.
-    failure_clusters = [
-        c for c in clusters if "(" in c["name"] and "success" not in c["name"]
-    ]
-    if failure_clusters:
-        top_fail = max(failure_clusters, key=lambda c: c["trace_count"])
+    if top_fail:
         typer.echo(
             f'Top failure cluster: "{top_fail["name"]}" '
             f"({top_fail['trace_count']} traces)"
         )
 
-    # Save json report
-    report_json_path = out_dir / "report.json"
-    report_json_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
     typer.echo(f"Report written to {out_dir / 'report.html'}")
 
 
@@ -110,15 +155,18 @@ def generate(
     redact_hook: str = typer.Option(
         None, help="Custom PII redaction hook (module:function)"
     ),
+    json_output: bool = typer.Option(
+        False, "--json", help="Print a machine-readable JSON summary to stdout"
+    ),
 ) -> None:
     """Generate eval cases, rubrics, and pytest harness from traces."""
     db_p = Path(db_path)
     if not db_p.exists():
-        typer.echo(f"Error: database file {db_path} does not exist.")
+        typer.echo(f"Error: database file {db_path} does not exist.", err=True)
         raise typer.Exit(1)
 
     out_dir = Path(output)
-    cases_count, clusters_count = generate_evals(
+    counts = generate_evals(
         db_p,
         out_dir,
         per_cluster=per_cluster,
@@ -126,8 +174,12 @@ def generate(
         redact_hook_str=redact_hook,
     )
 
+    if json_output:
+        typer.echo(json.dumps({**counts, "output_dir": output}))
+        return
+
     typer.echo(
-        f"Wrote {cases_count} eval cases across {clusters_count} clusters "
+        f"Wrote {counts['cases']} eval cases across {counts['clusters']} clusters "
         f"→ {output}/cases/*.yaml"
     )
     typer.echo(f"Wrote judge rubrics → {output}/rubrics/*.md")
@@ -146,6 +198,9 @@ def run(
     runs_dir: str = typer.Option(
         None, help="Directory for run reports (default: <evals_dir>/runs)"
     ),
+    json_output: bool = typer.Option(
+        False, "--json", help="Print a machine-readable JSON summary to stdout"
+    ),
 ) -> None:
     """Run generated evals against target."""
     import pytest
@@ -163,6 +218,41 @@ def run(
         args.extend(["--only", only])
     if runs_dir:
         args.extend(["--runs-dir", runs_dir])
+
+    if json_output:
+        import contextlib
+        import io
+
+        reports_dir = Path(runs_dir) if runs_dir else Path(evals_dir) / "runs"
+        before = set(reports_dir.glob("run_*.json")) if reports_dir.exists() else set()
+
+        # Swallow pytest's and the suite's rich terminal output: stdout must
+        # carry exactly one JSON object.
+        sink = io.StringIO()
+        with contextlib.redirect_stdout(sink), contextlib.redirect_stderr(sink):
+            exit_code = int(pytest.main(args))
+
+        after = set(reports_dir.glob("run_*.json")) if reports_dir.exists() else set()
+        new_reports = sorted(after - before)
+        report_path = new_reports[-1] if new_reports else None
+
+        summary = {"total": 0, "passed": 0, "failed": 0}
+        if report_path:
+            with open(report_path, encoding="utf-8") as f:
+                summary = json.load(f).get("summary", summary)
+
+        typer.echo(
+            json.dumps(
+                {
+                    "total": summary.get("total", 0),
+                    "passed": summary.get("passed", 0),
+                    "failed": summary.get("failed", 0),
+                    "report": str(report_path) if report_path else None,
+                    "exit_code": exit_code,
+                }
+            )
+        )
+        raise typer.Exit(code=exit_code)
 
     # Run pytest programmatically
     exit_code = pytest.main(args)

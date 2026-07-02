@@ -119,7 +119,7 @@ BUGGY=true traceval run evals/ --target examples.demo_agent.core:invoke_agent --
 ## 🛠️ CLI Command Reference
 
 > [!NOTE]
-> All CLI commands support `--json` to output machine-readable stdout for scripting.
+> `ingest`, `analyze`, `generate`, and `run` support `--json`: human-readable output is suppressed and a single JSON object is printed to stdout for scripting (`run` still exits nonzero on failures).
 
 ### Ingestion
 ```bash

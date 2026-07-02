@@ -15,7 +15,7 @@ def generate_evals(
     per_cluster: int = 3,
     include_failures: bool = False,
     redact_hook_str: str | None = None,
-) -> tuple[int, int]:
+) -> dict[str, int]:
     store = TraceStore(db_path)
     try:
         traces = list(store.list_traces())
@@ -45,6 +45,11 @@ def generate_evals(
         # 3. Emit pytest suite (conftest.py + test_generated.py)
         emit_pytest_suite(output_dir)
 
-        return len(cases), len(clusters)
+        return {
+            "cases": len(cases),
+            "clusters": len(clusters),
+            "golden": sum(1 for c in cases if c["kind"] == "golden"),
+            "regression": sum(1 for c in cases if c["kind"] == "regression"),
+        }
     finally:
         store.close()

@@ -143,6 +143,13 @@ def test_e2e_runner_execution(tmp_path):
     evals_dir = tmp_path / "evals"
     generate_evals(db_path, evals_dir, include_failures=True)
 
+    # `run` calls pytest.main in-process; a previously executed generated
+    # suite leaves its conftest cached in sys.modules and poisons this one.
+    import sys
+
+    for mod in ("conftest", "test_generated"):
+        sys.modules.pop(mod, None)
+
     # Run the CLI suite against the dummy target
     runner = CliRunner()
     result = runner.invoke(
