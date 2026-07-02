@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from typer.testing import CliRunner
@@ -132,12 +133,26 @@ def test_e2e_runner_execution(tmp_path):
     # Pytest finished successfully (either code 0 or exit_code of tests)
     assert result.exit_code in [0, 1]
 
-    # Verify run report exists
-    runs_dir = evals_dir / "runs"
+    # Verify run report exists at parent/project level
+    runs_dir = evals_dir.parent / "runs"
     assert runs_dir.exists()
 
     report_files = list(runs_dir.glob("*.json"))
     assert len(report_files) > 0
+
+    # Load and assert content structure
+    with open(report_files[0], encoding="utf-8") as f:
+        report = json.load(f)
+    assert "summary" in report
+    assert "results" in report
+    assert report["summary"]["total"] > 0
+
+    # Load expected results structure
+    expected_path = FIXTURES_DIR / "demo_agent_expected" / "results.json"
+    with open(expected_path, encoding="utf-8") as f:
+        expected = json.load(f)
+    assert "summary" in expected
+    assert expected["summary"]["failed"] == 0
 
 
 def test_openai_compat_judge(monkeypatch):

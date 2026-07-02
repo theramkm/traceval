@@ -1,4 +1,7 @@
 # AUTO-GENERATED, review me before trusting in CI
+import sys
+sys.dont_write_bytecode = True
+
 import pytest
 import os
 import yaml
@@ -12,6 +15,10 @@ def pytest_addoption(parser):
     parser.addoption("--judge", action="store", default="fake", help="fake|openai")
     parser.addoption("--compare", action="store", default=None, help="Previous run JSON report")
     parser.addoption("--only", action="store", default=None, help="Filter by cluster or case ID")
+
+def pytest_configure(config):
+    # Prevent pytest cache from polluting evals/
+    config.option.cache_dir = str(Path(__file__).parent.parent / ".pytest_cache")
 
 def pytest_generate_tests(metafunc):
     if "eval_case" in metafunc.fixturenames:
@@ -70,19 +77,19 @@ def pytest_sessionfinish(session, exitstatus):
     if not _results_accumulator:
         return
     
-    runs_dir = Path(__file__).parent / "runs"
+    runs_dir = Path(__file__).parent.parent / "runs"
     runs_dir.mkdir(exist_ok=True)
     
-    from datetime import datetime
+    from datetime import datetime, timezone
     import json
-    timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     report_file = runs_dir / f"run_{timestamp}.json"
     
     passed_count = sum(1 for r in _results_accumulator if r["passed"])
     failed_count = len(_results_accumulator) - passed_count
     
     report = {
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "summary": {
             "total": len(_results_accumulator),
             "passed": passed_count,

@@ -69,7 +69,8 @@ def ingest_file(
     adapter = adapter_cls()
 
     if log_path is None:
-        log_path = Path("ingest.log")
+        db_p = Path(store.db_path)
+        log_path = db_p.parent / f"{db_p.name}.log"
 
     # Set up custom logger to count and log warnings
     logger = logging.getLogger("traceval.ingest")
