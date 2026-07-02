@@ -33,3 +33,30 @@ jobs:
 
     - name: Run Tests with Coverage
       run: uv run pytest --cov=src/traceval --cov-fail-under=85
+
+  tag:
+    needs: test
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Create and push tag
+      run: |
+        VERSION=$(grep -m 1 'version =' pyproject.toml | tr -d '"' | tr -d "'" | awk '{print $NF}')
+        TAG="v$VERSION"
+        
+        if git rev-parse "$TAG" >/dev/null 2>&1; then
+          echo "Tag $TAG already exists, skipping."
+        else
+          echo "Creating tag $TAG..."
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "$TAG"
+          git push origin "$TAG"
+        fi
+
