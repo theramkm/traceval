@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 
 import typer
@@ -257,6 +258,131 @@ def run(
     # Run pytest programmatically
     exit_code = pytest.main(args)
     raise typer.Exit(code=exit_code)
+
+
+@app.command()
+def demo(
+    output: str = typer.Option(
+        "traceval-demo", "-o", help="Directory to create demo artifacts in"
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help=(
+            "Allow re-running inside an existing demo directory: files the "
+            "demo itself creates are replaced; nothing else is ever deleted"
+        ),
+    ),
+) -> None:
+    """Run the full trace-to-eval loop end-to-end with the built-in demo agent.
+
+    Generates 200 synthetic traces, ingests them, analyzes failure clusters,
+    generates an eval suite, then runs it against a healthy agent (must
+    pass) and a buggy agent (must fail).
+    """
+    import shutil
+    import subprocess
+    import sys
+
+    from traceval.demo.traces import generate_traces_file
+
+    demo_dir = Path(output)
+    demo_artifacts = ["synthetic_traces.jsonl", "traces.db", "analysis", "evals"]
+    if demo_dir.exists() and any(demo_dir.iterdir()):
+        if not force:
+            typer.echo(
+                f"Error: {demo_dir} is not empty. Pass --force to refresh the "
+                "demo artifacts in place (only files the demo itself creates "
+                "are replaced; nothing else is deleted).",
+                err=True,
+            )
+            raise typer.Exit(1)
+        for name in demo_artifacts:
+            stale = demo_dir / name
+            if stale.is_dir():
+                shutil.rmtree(stale)
+            elif stale.exists():
+                stale.unlink()
+    demo_dir.mkdir(parents=True, exist_ok=True)
+
+    traces_path = demo_dir / "synthetic_traces.jsonl"
+    db_path = demo_dir / "traces.db"
+    analysis_dir = demo_dir / "analysis"
+    evals_dir = demo_dir / "evals"
+    target = "traceval.demo.agent:invoke_agent"
+
+    typer.echo("=== 1/6 Generate synthetic traces ===")
+    generate_traces_file(traces_path)
+
+    typer.echo("\n=== 2/6 Ingest into SQLite ===")
+    store = TraceStore(db_path)
+    try:
+        ok_count, span_count, _warns, _log = ingest_file(
+            traces_path, store, format_name="generic"
+        )
+    finally:
+        store.close()
+    typer.echo(f"Ingested {ok_count} traces ({span_count} spans) → {db_path}")
+
+    typer.echo("\n=== 3/6 Analyze (label, cluster) ===")
+    analysis_dir.mkdir(parents=True, exist_ok=True)
+    summary = run_analysis(db_path, output_dir=analysis_dir)
+    (analysis_dir / "report.json").write_text(
+        json.dumps(summary, indent=2), encoding="utf-8"
+    )
+    typer.echo(f"{len(summary['clusters'])} clusters → {analysis_dir / 'report.html'}")
+
+    typer.echo("\n=== 4/6 Generate eval suite ===")
+    counts = generate_evals(db_path, evals_dir, include_failures=True)
+    typer.echo(
+        f"{counts['cases']} cases ({counts['golden']} golden, "
+        f"{counts['regression']} regression) → {evals_dir}"
+    )
+
+    def _run_suite(buggy: bool) -> int:
+        # Subprocess on purpose: the generated conftest cannot be imported
+        # twice in one process, and BUGGY stays scoped to the child env.
+        env = {**os.environ, "BUGGY": "true" if buggy else "false"}
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                str(evals_dir),
+                "--target",
+                target,
+                "--judge",
+                "fake",
+                "-p",
+                "no:cacheprovider",
+                "-q",
+            ],
+            env=env,
+        )
+        return proc.returncode
+
+    typer.echo("\n=== 5/6 Run suite against the HEALTHY demo agent (must pass) ===")
+    if _run_suite(buggy=False) != 0:
+        typer.echo("Error: the healthy agent failed its own generated suite.", err=True)
+        raise typer.Exit(1)
+
+    typer.echo("\n=== 6/6 Run suite against the BUGGY demo agent (must fail) ===")
+    if _run_suite(buggy=True) == 0:
+        typer.echo("Error: the buggy agent unexpectedly passed the suite.", err=True)
+        raise typer.Exit(1)
+
+    reports = sorted((evals_dir / "runs").glob("run_*.json"))
+    typer.echo("\n=== Demo complete: healthy agent PASSED, buggy agent FAILED ===")
+    typer.echo(f"Failure-cluster report: {analysis_dir / 'report.html'}")
+    for r in reports[-2:]:
+        typer.echo(f"Run report: {r}")
+    typer.echo("\nRe-run any stage manually:")
+    typer.echo(f"  traceval ingest {traces_path} -o {db_path}")
+    typer.echo(f"  traceval analyze {db_path} -o {analysis_dir}")
+    typer.echo(f"  traceval generate {db_path} -o {evals_dir} --include-failures")
+    typer.echo(f"  traceval run {evals_dir} --target {target} --judge fake")
+    if reports:
+        typer.echo(f"  traceval calibrate {reports[-1]}")
 
 
 @app.command()
