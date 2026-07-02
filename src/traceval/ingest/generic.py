@@ -13,6 +13,10 @@ logger = logging.getLogger(__name__)
 class GenericAdapter(Adapter):
     format_name: ClassVar[str] = "generic"
 
+    def __init__(self, tool_span_globs: list[str] | None = None) -> None:
+        # Generic traces declare step kinds explicitly; globs are unused.
+        self.tool_span_globs = tool_span_globs
+
     def detect(self, first_lines: list[str]) -> bool:
         if not first_lines:
             return False

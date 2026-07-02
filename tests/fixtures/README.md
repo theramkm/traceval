@@ -16,3 +16,14 @@ This directory contains synthetic logs and outputs used for testing traceval ada
 10. **tr-010 (Simple success)**: Direct assistant output response.
 11. **tr-011 (Latency timeout)**: Completed but exceeds runtime duration bounds.
 12. **tr-012 (Success stripe lookup)**: Simple tool path resolving successfully.
+
+## Backend export fixtures (otel_spans / langfuse_export / langsmith_runs)
+
+Each backend file carries the same five stories (success with llm+tool,
+tool error, llm error, timeout, tool loop) plus one corrupt line to test
+warning handling. The Langfuse and OTel files additionally contain a
+sixth trace (`lf-006` / `otel-006`) whose tool span is named
+`create_ticket`, a name the demo agent never uses: it proves tool
+detection relies on the documented signals (Langfuse input/output
+heuristic, OTel gen_ai semantic-convention attributes), not on a tool
+vocabulary.

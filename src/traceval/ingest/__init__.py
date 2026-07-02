@@ -58,6 +58,7 @@ def ingest_file(
     store: TraceStore,
     format_name: str = "auto",
     log_path: Path | None = None,
+    tool_span_globs: list[str] | None = None,
 ) -> tuple[int, int, int, Path]:
     if format_name == "auto":
         format_name = detect_format(path)
@@ -66,7 +67,7 @@ def ingest_file(
     if not adapter_cls:
         raise ValueError(f"Unknown format: {format_name}")
 
-    adapter = adapter_cls()
+    adapter = adapter_cls(tool_span_globs=tool_span_globs)
 
     if log_path is None:
         db_p = Path(store.db_path)

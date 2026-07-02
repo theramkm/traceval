@@ -25,15 +25,28 @@ def ingest(
     path: str,
     format: str = typer.Option("auto", help="auto|otel|langfuse|langsmith|generic"),
     output: str = typer.Option("traces.db", "-o", help="SQLite database output path"),
+    tool_span_names: str = typer.Option(
+        None,
+        "--tool-span-names",
+        help=(
+            "Comma-separated name globs (e.g. '*_lookup,tool_*') that mark "
+            "spans as tool calls; replaces the built-in heuristic for "
+            "Langfuse SPANs and adds a fallback for OTel spans"
+        ),
+    ),
     json_output: bool = typer.Option(
         False, "--json", help="Print a machine-readable JSON summary to stdout"
     ),
 ) -> None:
     """Ingest trace logs into SQLite database."""
+    globs = None
+    if tool_span_names:
+        globs = [g.strip() for g in tool_span_names.split(",") if g.strip()]
+
     db = TraceStore(output)
     try:
         ok_count, span_count, warn_count, log_file = ingest_file(
-            Path(path), db, format_name=format
+            Path(path), db, format_name=format, tool_span_globs=globs
         )
         if json_output:
             typer.echo(

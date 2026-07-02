@@ -1,3 +1,4 @@
+import fnmatch
 import json
 import logging
 from collections.abc import Iterator
@@ -25,6 +26,9 @@ def parse_iso_datetime(dt_str: str | None) -> datetime | None:
 
 class OtelAdapter(Adapter):
     format_name: ClassVar[str] = "otel"
+
+    def __init__(self, tool_span_globs: list[str] | None = None) -> None:
+        self.tool_span_globs = tool_span_globs
 
     def detect(self, first_lines: list[str]) -> bool:
         if not first_lines:
@@ -170,13 +174,27 @@ class OtelAdapter(Adapter):
                             )
                         )
 
-                    # Check if Tool call
+                    # Check if Tool call. Primary signal: GenAI semantic
+                    # convention attributes. Fallbacks are attribute- or
+                    # user-glob-based only, never tool-name lists.
                     elif (
                         "gen_ai.tool.name" in span_attrs
                         or "gen_ai.tool.arguments" in span_attrs
-                        or name in ["order_lookup", "stripe_lookup", "kb_search"]
+                        or span_attrs.get("gen_ai.operation.name") == "execute_tool"
+                        or "tool.name" in span_attrs
+                        or (
+                            self.tool_span_globs is not None
+                            and any(
+                                fnmatch.fnmatch(name, pattern)
+                                for pattern in self.tool_span_globs
+                            )
+                        )
                     ):
-                        tool_name = span_attrs.get("gen_ai.tool.name") or name
+                        tool_name = (
+                            span_attrs.get("gen_ai.tool.name")
+                            or span_attrs.get("tool.name")
+                            or name
+                        )
                         args_json = span_attrs.get("gen_ai.tool.arguments") or "{}"
                         tool_call = ToolCall(
                             span_id=span["span_id"],

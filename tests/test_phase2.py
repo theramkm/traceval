@@ -29,13 +29,13 @@ def test_otel_ingest(tmp_path):
         log_path=log_path,
     )
 
-    # 5 traces are defined in our otel_spans.jsonl + 1 invalid line
-    assert ok_count == 5
+    # 6 traces are defined in our otel_spans.jsonl + 1 invalid line
+    assert ok_count == 6
     assert warn_count == 1
     assert log_file == log_path
 
     traces = list(store.list_traces())
-    assert len(traces) == 5
+    assert len(traces) == 6
 
     # Check trace 1 detail: otel-001 has 1 llm step and 1 tool step
     t1 = next(t for t in traces if t.trace_id == "otel-001")
@@ -70,12 +70,12 @@ def test_langfuse_ingest(tmp_path):
         log_path=log_path,
     )
 
-    # 5 traces + 1 invalid line
-    assert ok_count == 5
+    # 6 traces + 1 invalid line
+    assert ok_count == 6
     assert warn_count == 1
 
     traces = list(store.list_traces())
-    assert len(traces) == 5
+    assert len(traces) == 6
 
     t1 = next(t for t in traces if t.trace_id == "lf-001")
     assert len(t1.steps) == 2
@@ -133,7 +133,55 @@ def test_robustness_on_shuffled_inputs(tmp_path):
         store,
         format_name="otel",
     )
-    # Reconstructs all 5 traces
-    assert ok_count == 5
+    # Reconstructs all 6 traces
+    assert ok_count == 6
     assert warn_count == 0
     store.close()
+
+
+def test_real_tool_names_detected(tmp_path):
+    # Tool detection must not depend on the demo agent's tool vocabulary:
+    # the create_ticket spans in both fixtures classify as tools via the
+    # documented signals (Langfuse input/output heuristic; OTel gen_ai
+    # semantic-convention attributes), never a name list.
+    for fixture, fmt, trace_id in [
+        ("langfuse_export.jsonl", "langfuse", "lf-006"),
+        ("otel_spans.jsonl", "otel", "otel-006"),
+    ]:
+        store = TraceStore(tmp_path / f"{fmt}.db")
+        ingest_file(FIXTURES_DIR / fixture, store, format_name=fmt)
+        traces = list(store.list_traces())
+        store.close()
+
+        trace = next(t for t in traces if t.trace_id == trace_id)
+        tool_steps = [s for s in trace.steps if s.kind == "tool"]
+        assert len(tool_steps) == 1, f"{fmt}: create_ticket span not detected"
+        assert tool_steps[0].tool.name == "create_ticket"
+
+
+def test_tool_span_globs_override(tmp_path):
+    # User globs replace the built-in Langfuse heuristic: with a glob that
+    # matches nothing, the create_ticket SPAN (no metadata.tool) must NOT
+    # classify as a tool; with a matching glob it must.
+    store = TraceStore(tmp_path / "none.db")
+    ingest_file(
+        FIXTURES_DIR / "langfuse_export.jsonl",
+        store,
+        format_name="langfuse",
+        tool_span_globs=["nothing_matches_*"],
+    )
+    trace = next(t for t in store.list_traces() if t.trace_id == "lf-006")
+    store.close()
+    assert all(s.kind != "tool" for s in trace.steps)
+
+    store = TraceStore(tmp_path / "match.db")
+    ingest_file(
+        FIXTURES_DIR / "langfuse_export.jsonl",
+        store,
+        format_name="langfuse",
+        tool_span_globs=["create_*"],
+    )
+    trace = next(t for t in store.list_traces() if t.trace_id == "lf-006")
+    store.close()
+    assert [s.kind for s in trace.steps] == ["tool"]
+    assert trace.steps[0].tool.name == "create_ticket"

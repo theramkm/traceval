@@ -25,6 +25,10 @@ def parse_iso_datetime(dt_str: str | None) -> datetime | None:
 class LangsmithAdapter(Adapter):
     format_name: ClassVar[str] = "langsmith"
 
+    def __init__(self, tool_span_globs: list[str] | None = None) -> None:
+        # LangSmith runs carry an explicit run_type; globs are unused.
+        self.tool_span_globs = tool_span_globs
+
     def detect(self, first_lines: list[str]) -> bool:
         if not first_lines:
             return False

@@ -1,3 +1,4 @@
+import fnmatch
 import json
 import logging
 from collections.abc import Iterator
@@ -24,6 +25,9 @@ def parse_iso_datetime(dt_str: str | None) -> datetime | None:
 
 class LangfuseAdapter(Adapter):
     format_name: ClassVar[str] = "langfuse"
+
+    def __init__(self, tool_span_globs: list[str] | None = None) -> None:
+        self.tool_span_globs = tool_span_globs
 
     def detect(self, first_lines: list[str]) -> bool:
         if not first_lines:
@@ -142,11 +146,30 @@ class LangfuseAdapter(Adapter):
                             )
 
                         elif obs_type == "SPAN":
-                            # Check if tool span
-                            is_tool = (
-                                name in ["order_lookup", "stripe_lookup", "kb_search"]
-                                or obs.get("metadata", {}).get("tool") is not None
-                            )
+                            # Tool classification, in priority order:
+                            # 1. explicit metadata.tool marker (always wins)
+                            # 2. user globs (--tool-span-names), which REPLACE
+                            #    the built-in heuristic when provided
+                            # 3. heuristic: a SPAN that recorded an input and
+                            #    either an output or an error signal is a tool
+                            #    call (failed tools often produce no output,
+                            #    so an ERROR level counts as second signal)
+                            metadata = obs.get("metadata") or {}
+                            if metadata.get("tool") is not None:
+                                is_tool = True
+                            elif self.tool_span_globs is not None:
+                                is_tool = any(
+                                    fnmatch.fnmatch(name, pattern)
+                                    for pattern in self.tool_span_globs
+                                )
+                            else:
+                                has_error_signal = (
+                                    level == "ERROR"
+                                    or obs.get("statusMessage") is not None
+                                )
+                                is_tool = obs.get("input") is not None and (
+                                    obs.get("output") is not None or has_error_signal
+                                )
                             if is_tool:
                                 obs_input = obs.get("input")
                                 if isinstance(obs_input, (dict, list)):

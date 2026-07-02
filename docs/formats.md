@@ -40,10 +40,14 @@ OTel traces are ingested from flat lists of JSON span logs (e.g. OTLP export for
   - `gen_ai.system`
   - `gen_ai.prompt`
   - `gen_ai.completion`
-- **Tool Call**: Spans containing:
-  - `gen_ai.tool.name`
-  - `gen_ai.tool.arguments`
-  - Or span name matching `order_lookup`, `stripe_lookup`, or `kb_search`.
+- **Tool Call**: Spans matching any of these signals:
+  - `gen_ai.tool.name` present in attributes (primary, per GenAI semantic conventions)
+  - `gen_ai.tool.arguments` present in attributes
+  - `gen_ai.operation.name` attribute equal to `"execute_tool"`
+  - `tool.name` present in attributes
+  - Span name matches a user-supplied glob from `traceval ingest --tool-span-names` (comma-separated, e.g. `"*_lookup,tool_*"`)
+
+  There is no built-in tool-name list; detection never depends on a specific tool vocabulary.
 - **Other**: All other spans are categorized as `other`.
 
 ### Attribute Translations
@@ -89,7 +93,12 @@ Langfuse exports traces as JSON objects with nested lists of observations (of ty
   - `llm.prompt_tokens` $\leftarrow$ `usage.promptTokens`
   - `llm.completion_tokens` $\leftarrow$ `usage.completionTokens`
   - `llm.error` $\leftarrow$ `statusMessage` when `level == "ERROR"`
-- **SPAN** $\rightarrow$ `ToolCall` (if name is order/stripe/kb lookup or `metadata.tool` matches):
+- **SPAN** $\rightarrow$ `ToolCall` when, in priority order:
+  1. the observation's `metadata.tool` is set (explicit marker, always wins), or
+  2. `traceval ingest --tool-span-names` globs were supplied and the observation `name` matches one (globs replace the heuristic below), or
+  3. default heuristic: the SPAN recorded an `input` AND either an `output` or an error signal (`level == "ERROR"` or `statusMessage` set). Failed tool calls often produce no output, which is why an error counts as the second signal.
+
+  SPANs matching none of these become `other` steps. Field mapping:
   - `tool.name` $\leftarrow$ Observation `name`
   - `tool.arguments_json` $\leftarrow$ Observation `input` (serialized to JSON)
   - `tool.output` $\leftarrow$ Observation `output` (stringified)
