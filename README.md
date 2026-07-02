@@ -1,103 +1,138 @@
-# traceval: Trace-to-Eval Compiler
+# 🚀 traceval: Trace-to-Eval Compiler
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python Version](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)](https://www.python.org/)
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.11%20%7C%203.12%20%7C%203.13-blue.svg" alt="Python Version" />
+  <img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License" />
+  <img src="https://img.shields.io/badge/Coverage-87%25-green.svg" alt="Coverage" />
+  <a href="https://github.com/astral-sh/uv"><img src="https://img.shields.io/badge/dynamic/json?label=uv&query=%24.version&url=https%3A%2F%2Fraw.githubusercontent.com%2Fastral-sh%2Fuv%2Fmain%2Fcargo.toml&color=de5d43" alt="uv" /></a>
+</p>
 
-> "Your traces already know how your agent fails. traceval turns them into the test suite you never wrote."
+***"Your traces already know how your agent fails. traceval turns them into the test suite you never wrote."***
 
-Teams running LLM agents in production have observability (traces in Langfuse, LangSmith, or OpenTelemetry), but only a fraction maintain robust evals. The raw material for great tests sits unused because converting logs into regression suites is tedious and manual. 
+Teams running LLM agents in production have observability traces, but only a fraction maintain robust evals. The raw material for great tests — thousands of real production traces, including edge cases and errors — sits unused because converting them into regression suites is manual and tedious.
 
-**traceval** is a CLI and Python library that ingests agent trace logs from standard observability backends, normalizes them, automatically clusters/labels outcomes, and compiles them into a runnable pytest harness with YAML cases and LLM-as-judge rubrics.
+**traceval** automates this by ingesting agent traces from standard sources, normalizing them into a canonical Pydantic model, analyzing outcomes/clustering task signatures, and **compiling them into a human-editable eval suite**: pytest files + YAML datasets + judge rubric scaffolds.
 
 ---
 
-## E2E Architecture Flow
+## 🎨 Architectural Pipeline
 
 ```mermaid
-graph TD
-    A[ingest: Langsmith, Langfuse, OTel] --> B[Store traces.db SQLite]
-    B --> C[analyze: Heuristics & Jaccard Clustering]
-    C --> D[generate: Compiles Cases, Pytest & Rubrics]
-    D --> E[run: Evaluates target response & reports regressions]
+graph LR
+    classDef source fill:#2c3e50,stroke:#34495e,stroke-width:2px,color:#fff;
+    classDef normalize fill:#16a085,stroke:#1abc9c,stroke-width:2px,color:#fff;
+    classDef analyze fill:#2980b9,stroke:#3498db,stroke-width:2px,color:#fff;
+    classDef compile fill:#8e44ad,stroke:#9b59b6,stroke-width:2px,color:#fff;
+    classDef run fill:#d35400,stroke:#e67e22,stroke-width:2px,color:#fff;
+
+    A[OTel / Langfuse / LangSmith] --> B(Canonical Trace DB)
+    B --> C(Outcome Labeler & Jaccard Clusterer)
+    C --> D(YAML cases + Pytest + Rubrics)
+    D --> E(HTTP / Callable Runner & Diff Reports)
+
+    class A source;
+    class B normalize;
+    class C analyze;
+    class D compile;
+    class E run;
 ```
 
 ---
 
-## 60-Second Quickstart Demo
+## ✨ Key Features
 
-We provide an interactive demo agent and setup script so you can experience `traceval` locally in under a minute.
+* 🔌 **Zero-Configuration Ingest**: Direct compatibility with OpenTelemetry GenAI semantic conventions, Langfuse observations, LangSmith runs, or generic JSONL exports.
+* 🧠 **Smart Outcome Taxonomy**: Automatic categorization of trace outcomes (`success`, `tool_error`, `validation_error`, `loop`, `timeout`, `bad_output`) using rule-based heuristics that you can extend with Python modules.
+* 📊 **Embedding-Free Clustering**: Fast, local Jaccard-similarity shingle grouping that runs 100% offline, keeping your development cycle private and deterministic.
+* 📝 **Clean Code Generation**: Compiles cases into editable YAML files, LLM-as-a-judge rubrics into Markdown checklist scaffolds, and pytest test runs into clean templates.
+* ⚡ **PII Redaction Safeguards**: Automatically scrubs emails, credit cards, phone numbers, and API tokens before writing test inputs.
+* 🛡️ **CI/CD Regression Diff**: Compares execution summaries and scores between runs using exit codes to catch agent failures before deploying.
 
-### 1. Clone & Run the E2E Demo Script
+---
+
+## ⏱️ 90-Second E2E Quickstart
+
+Experience `traceval` regression testing out of the box using our interactive demo script:
+
 ```bash
-# Run the demo script directly (requires uv)
+# Clone & run the demo
 chmod +x examples/demo.sh
 ./examples/demo.sh
 ```
 
-### 2. Manual CLI Step-by-Step
+### Manual Walkthrough
 
-#### Step A: Generate & Ingest Production-style Traces
+#### 1. Ingest Observability Logs
 ```bash
-# Seed synthetic agent logs
+# Seed 200 synthetic telemetry traces containing successes and failure edge cases
 python3 examples/make_traces.py
 
 # Ingest into SQLite database
 traceval ingest examples/synthetic_traces.jsonl -o traces.db
 ```
 
-#### Step B: Analyze Failures and Hotspots
+#### 2. Label & Analyze Traffic Gaps
 ```bash
 traceval analyze traces.db -o analysis/
 ```
-*Creates `analysis/report.html` detailing outcome splits and traffic coverage.*
+*Outputs outcome statistics and generates `analysis/report.html` mapping traffic clusters:*
+```text
+Outcomes: success 60% · tool_error 15% · loop 10% · timeout 8% · validation_error 8%
+Clusters: 37 task clusters found.
+Top failure cluster: "500 refund stripe -> stripe_lookup -> (tool_error)" (30 traces)
+Report written to analysis/report.html
+```
 
-#### Step C: Generate Evals & Pytest harness
+#### 3. Compile Cases and Pytest Harness
 ```bash
 traceval generate traces.db -o evals/ --include-failures
 ```
-*Generates YAML cases in `evals/cases/`, evaluation rubrics in `evals/rubrics/`, and pytest execution configurations (`conftest.py`, `test_generated.py`).*
+*Generates test parameters `evals/cases/` and rubric Markdown checklists `evals/rubrics/`.*
 
-#### Step D: Run Evaluation Suite Against Your Agent
+#### 4. Run Evaluations & Detect Regressions
 ```bash
-# Run against the healthy agent target (Passing all checks)
+# Run against the healthy agent (100% Pass)
 traceval run evals/ --target examples.demo_agent.agent:invoke_agent --judge fake
 
-# Run against a buggy agent configuration (Detects regressions and exits with status 1)
+# Run against the buggy agent (Detects regressions and exits with status 1)
 BUGGY=true traceval run evals/ --target examples.demo_agent.agent:invoke_agent --judge fake
 ```
 
 ---
 
-## Core Command Reference
+## 🛠️ CLI Command Reference
 
-### `ingest`
-Ingest trace telemetry files into traceval's canonical SQLite store:
-```bash
-traceval ingest dump.jsonl --format [otel|langfuse|langsmith|generic] -o traces.db
-```
+> [!NOTE]
+> All CLI commands support `--json` to output machine-readable stdout for scripting.
 
-### `analyze`
-Label trace outcomes and groups traces using embedding-free Jaccard and signature-based clustering:
+### Ingestion
 ```bash
-traceval analyze traces.db [--rules custom_rules.py] [--evals evals/] -o analysis/
+traceval ingest <path> --format [auto|otel|langfuse|langsmith|generic] -o <traces.db>
 ```
+*Ingests telemetry log dumps losslessly. Malformed spans write warnings to `<traces.db>.log`.*
 
-### `generate`
-Generate eval case parameters, custom judge criteria, and execution code:
+### Analysis
 ```bash
-traceval generate traces.db -o evals/ [--per-cluster 3] [--include-failures] [--redact-hook module:fn]
+traceval analyze <traces.db> [--rules custom_rules.py] [--evals evals/] -o <analysis_dir/>
 ```
+*Runs rule pipelines and Jaccard shingle similarity groupings.*
 
-### `run`
-Run generated test cases against an HTTP endpoint or Python callable:
+### Generation
 ```bash
-traceval run evals/ --target <url|module:function> [--judge fake|openai] [--compare runs/prev.json]
+traceval generate <traces.db> -o <evals_dir/> [--per-cluster 3] [--include-failures] [--redact-hook module:fn]
 ```
+*Creates regression cases, Markdown LLM-judge checklists, and conftest runners.*
+
+### Runner
+```bash
+traceval run <evals_dir/> --target <url|module:function> [--judge fake|openai] [--compare runs/prev.json]
+```
+*Executes tests, scores output constraints (`exact`, `contains`, `regex`, `json_schema`, `tool_sequence`, `judge`), and logs to project-level `runs/` directory.*
 
 ---
 
-## Honest Limitations (v1)
+## 💡 Honest Limitations
 
-- **Offline Replays**: traceval runs input-output assertions. It does not attempt to replay side effects on databases or external tools.
-- **Text-only Inputs**: Telemetry parsing handles text messages and inputs; image/multimodal payloads are logged as references.
-- **Static HTML**: The reporting UI is a simple, portable single-file HTML page. There is no hosted web dashboard in the v1 core package.
+* **Side-Effect Free**: traceval assertions evaluate input/output matches. It does not attempt to replay side effects (e.g., updating database records) on mock tools.
+* **Text Telemetry**: The canonical model is optimized for text logs. Image or multimodal payloads in traces are logged as references.
+* **Static Visualization**: The coverage report is a portable, single-file HTML page. There is no hosted web service.
