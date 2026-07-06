@@ -92,3 +92,20 @@ traceval run evals/ --target myapp.agent:invoke_agent --judge fake
 Because the working directory is importable, `myapp/agent.py` in your repo
 root works without installation. A bad module path or missing attribute
 produces the same one-line `ERROR:` plus a self-describing run report.
+
+## Non-deterministic live targets
+
+Golden cases assert the behavior recorded in a trace. If your target is a live
+agent that calls real services (live weather, live search, an LLM at
+temperature > 0), it will not reproduce the recorded output byte for byte, so
+`exact` and `contains_any` checks on golden cases can flake by design. That
+variance is what the `judge` check is for: it scores semantic adequacy rather
+than string identity. For live non-deterministic targets, prefer judge checks on
+goldens, or pin the target to a recorded/replayed backend when you need
+determinism.
+
+`tool_sequence` and `no_tool_loop` checks only see tools if the target returns
+the documented dict shape with a `tool_calls` list. A target that returns a bare
+string (a common shortcut) reports no tools, so those checks cannot pass against
+it; return `{"output": ..., "tool_calls": [{"name": ...}]}` if you want them
+scored.

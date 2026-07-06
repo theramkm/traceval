@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "traceval"
-version = "0.2.6"
+version = "0.2.7"
 description = "Turn your Langfuse, LangSmith, or OTel trace exports into a pytest eval suite you own: one CLI, no platform, works offline."
 readme = "README.md"
 requires-python = ">=3.11"

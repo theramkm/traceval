@@ -27,3 +27,15 @@ sixth trace (`lf-006` / `otel-006`) whose tool span is named
 detection relies on the documented signals (Langfuse input/output
 heuristic, OTel gen_ai semantic-convention attributes), not on a tool
 vocabulary.
+
+## Real modern-@observe shape (langfuse_observe_export.jsonl)
+
+Captured as a permanent contract from Phase D first contact with a real Langfuse
+v4 SDK export. Unlike the older `langfuse_export.jsonl` fixtures, this mirrors
+the modern `@observe` shape: a flat `observations` list that INCLUDES the root
+entry-function SPAN (null `parentObservationId`, name matching the trace name),
+trace-level `timestamp` + `latency` (seconds, no endTime), and top-level
+`promptTokens` on the GENERATION. Two traces: one full (root + GENERATION + tool
+child) and one single-observation edge (agent failed before any child). Guards
+that the root span is not misclassified as a tool and that `ended_at` is computed
+from `latency`.

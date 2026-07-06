@@ -66,3 +66,6 @@ spec.md
 ehthumbs.db
 Icon?
 Thumbs.db
+
+# Phase D experiment scaffolding: real trace exports, dbs, calibration output. Never commit.
+phase-d/

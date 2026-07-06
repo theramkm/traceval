@@ -111,9 +111,16 @@ Langfuse exports traces as JSON objects with nested lists of observations (of ty
 | --- | --- |
 | `trace_id` | Trace `id` |
 | `started_at` | Trace `timestamp` |
+| `ended_at` | Trace `timestamp` + `latency` (the export carries `latency` in seconds, not an end time) |
 | `task_input` | Trace `input` |
 | `final_output` | Trace `output` |
 | `metadata` | Trace `metadata` |
+
+> Note: Langfuse has deprecated trace-level `input`/`output` (v4.13 steers to `propagate_attributes()`). The adapter still reads them for `task_input`/`final_output`; a fallback to the root span's input/output is tracked as a follow-up issue.
+
+### Root span handling
+
+Modern Langfuse SDKs (the `@observe` decorator) emit the entry function itself as a root SPAN inside the flat `observations` list, with the trace's input and output on it. That root is the trace envelope, not a tool call, so the adapter skips it when it is a null-`parentObservationId` SPAN that is either referenced as a parent by another observation OR whose `name` matches the trace name (which covers a trace that failed before any child observation). Older flat exports have neither signal, so nothing is skipped there.
 
 ### Observation Mapping
 - **GENERATION** $\rightarrow$ `LLMCall`:

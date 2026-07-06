@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.7] - 2026-07-06
+
+### Fixed
+- First contact with production Langfuse exports (a self-instrumented agent, real Langfuse v4 SDK, real export) surfaced two outcome-labeling bugs the synthetic fixtures could not: the root `@observe` span was classified as a tool call (15/21 real traces), and `ended_at` was never computed from the export's `latency` field (a TODO had sat on that line since the adapter was written), which let `R_TIMEOUT` mask the outcome taxonomy (before: 90% tool_error). Both fixed, with a regression fixture modeled on the real export shape; before/after on the real dump: root-as-tool 15/21 -> 0, `ended_at` 0/21 -> 21/21, taxonomy recovered to tool_error/bad_output/success. The Langfuse adapter now also computes `ended_at = timestamp + latency` (latency is in seconds) and skips the root entry-function SPAN (identified by null parent plus parent-reference or name match). Backward compatible: older flat exports are unaffected.
+
 ## [0.2.6] - 2026-07-02
 
 ### Changed

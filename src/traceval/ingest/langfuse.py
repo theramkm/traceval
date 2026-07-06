@@ -2,7 +2,7 @@ import fnmatch
 import json
 import logging
 from collections.abc import Iterator
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import ClassVar
 
@@ -66,11 +66,39 @@ class LangfuseAdapter(Adapter):
                     # Sort observations chronologically
                     observations.sort(key=lambda o: o.get("startTime") or "")
 
+                    # The modern @observe SDK emits the entry function as a root
+                    # SPAN inside observations; it is the trace envelope, not a
+                    # tool/step. Identify it as a null-parent SPAN that is either
+                    # referenced as a parent by another observation OR whose name
+                    # matches the trace name (which covers the case where the
+                    # agent failed before any child observation was created).
+                    # Older flat exports have no parent ids and no name match, so
+                    # nothing is skipped there (backward compatible).
+                    trace_name = data.get("name")
+                    referenced_parent_ids = {
+                        o.get("parentObservationId")
+                        for o in observations
+                        if o.get("parentObservationId")
+                    }
+                    root_span_ids = {
+                        o.get("id")
+                        for o in observations
+                        if o.get("parentObservationId") is None
+                        and o.get("type") == "SPAN"
+                        and (
+                            o.get("id") in referenced_parent_ids
+                            or (trace_name is not None and o.get("name") == trace_name)
+                        )
+                    }
+
                     steps = []
                     for idx, obs in enumerate(observations):
                         obs_type = obs.get("type")
                         name = obs.get("name", "")
                         span_id = obs.get("id", f"obs-{idx}")
+
+                        if span_id in root_span_ids:
+                            continue
 
                         start_t = parse_iso_datetime(obs.get("startTime"))
                         end_t = parse_iso_datetime(obs.get("endTime"))
@@ -239,11 +267,22 @@ class LangfuseAdapter(Adapter):
                         if data.get(k) is not None:
                             metadata[k] = str(data[k])
 
+                    # Langfuse exports trace-level `latency` (seconds), not an
+                    # endTime. Compute ended_at from it so R_TIMEOUT does not
+                    # misfire on every trace (which lacks ended_at otherwise).
+                    ended_at = None
+                    latency = data.get("latency")
+                    if started_at is not None and latency is not None:
+                        try:
+                            ended_at = started_at + timedelta(seconds=float(latency))
+                        except (TypeError, ValueError):
+                            ended_at = None
+
                     yield Trace(
                         trace_id=trace_id,
                         source="langfuse",
                         started_at=started_at,
-                        ended_at=None,  # Or calculate max endTime of observations
+                        ended_at=ended_at,
                         task_input=task_input,
                         final_output=final_output,
                         steps=steps,

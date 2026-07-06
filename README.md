@@ -194,7 +194,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: theramkm/traceval@v0.2.6
+      - uses: theramkm/traceval@v0.2.7
         with:
           evals-dir: evals/
           target: myapp.agent:invoke_agent   # or an HTTP URL
